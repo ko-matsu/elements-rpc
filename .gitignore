@@ -1,0 +1,5 @@
+.idea
+.git
+node_modules
+command.conf
+/package-lock.json
