@@ -197,7 +197,7 @@ const main = async () =>{
     }
     else if (process.argv[2] == "getsidechaininfo") {
       const result = await elementsCli.getsidechaininfo()
-      console.log(ss.argv[2] + "getsidechaininfo =>\n", result)
+      console.log(process.argv[2] + "getsidechaininfo =>\n", result)
     }
     else if (checkString(process.argv[2], "btc_sendtoaddress", "bsndaddr")) {
       if (process.argv.length < 5) {
