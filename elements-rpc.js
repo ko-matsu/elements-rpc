@@ -2,6 +2,7 @@
 const jsonrpcClientLib = require('./jsonrpc-cli-lib')
 const fs = require('fs')
 const ini = require('ini')
+const readline = require('readline-sync');
 // process.on('unhandledRejection', console.dir);
 
 // load configure
@@ -38,6 +39,8 @@ const btcConnInfo = jsonrpcClientLib.CreateConnection(connInfo.bitcoin.host, con
 
 let elementsCli = new jsonrpcClientLib.ElementsCli(elemConnInfo)
 let btcCli = new jsonrpcClientLib.BitcoinCli(btcConnInfo)
+
+// -----------------------------------------------------------------------------
 
 // pegin function
 const pegin_function = async function(amount, btc_address, elem_address, blockNum){
@@ -100,6 +103,8 @@ const blindtransaction_function = async function(address, address2, amount, bloc
   await elementsCli.directExecute('generatetoaddress', [blockNum, address])
 }
 
+// -----------------------------------------------------------------------------
+
 const commandData = {
   getsidechaininfo: {
     name: 'getsidechaininfo',
@@ -129,27 +134,27 @@ const commandData = {
   btc_validaddress: {
     name: 'btc_validaddress',
     alias: 'bvaddr',
-    parameter: '<address>'
+    parameter: '[<address>]'
   },
   validaddress: {
     name: 'validaddress',
     alias: 'vaddr',
-    parameter: '<address>'
+    parameter: '[<address>]'
   },
   dumptransaction: {
     name: 'dumptransaction',
     alias: 'dumptx',
-    parameter: '<txid>'
+    parameter: '[<txid>]'
   },
   btc_dumptransaction: {
     name: 'btc_dumptransaction',
     alias: 'bdumptx',
-    parameter: '<txid>'
+    parameter: '[<txid>]'
   },
   unblindtransaction: {
     name: 'unblindtransaction',
     alias: 'unblindtx',
-    parameter: '<txid>'
+    parameter: '[<txid>]'
   },
 }
 
@@ -186,6 +191,8 @@ const checkString = function(arg, matchText, alias = undefined){
   }
   return false
 }
+
+// -----------------------------------------------------------------------------
 
 const main = async () =>{
   try {
@@ -239,11 +246,12 @@ const main = async () =>{
       await pegin_function(process.argv[3], process.argv[4], process.argv[5], 105)
     }
     else if (checkString(process.argv[2], "btc_validaddress", "bvaddr")) {
+      let address = ''
       if (process.argv.length < 4) {
-        console.log("format: btc_validaddress <address>")
-        return 0
+        address = readline.question('target address > ');
+      } else {
+        address = process.argv[3]
       }
-      const address = process.argv[3]
       const validateaddress = await btcCli.directExecute('validateaddress', [address])
       console.log("validateaddress =>\n", validateaddress)
       const addressinfo = await btcCli.directExecute('getaddressinfo', [address])
@@ -252,11 +260,12 @@ const main = async () =>{
       console.log("privkey =>\n", privkey)
     }
     else if (checkString(process.argv[2], "validaddress", "vaddr")) {
+      let address = ''
       if (process.argv.length < 4) {
-        console.log("format: validaddress <address>")
-        return 0
+        address = readline.question('target address > ');
+      } else {
+        address = process.argv[3]
       }
-      const address = process.argv[3]
       const validateaddress = await elementsCli.directExecute('validateaddress', [address])
       console.log("validateaddress =>\n", validateaddress)
       const addressinfo = await elementsCli.directExecute('getaddressinfo', [address])
@@ -269,11 +278,12 @@ const main = async () =>{
       console.log("blindingkey =>\n", blindingkey)
     }
     else if (checkString(process.argv[2], "btc_dumptransaction", "bdumptx")) {
+      let txid = ''
       if (process.argv.length < 4) {
-        console.log("format: btc_dumptransaction <txid>")
-        return 0
+        txid = readline.question('target txid > ');
+      } else {
+        txid = process.argv[3]
       }
-      const txid = process.argv[3]
       const gettransaction = await btcCli.directExecute('gettransaction', [txid])
       console.log("tx.amount =>\n", gettransaction.amount)
       console.log("tx.details =>\n", gettransaction.details)
@@ -281,11 +291,12 @@ const main = async () =>{
       console.log("decoderawtransaction =>\n", JSON.stringify(tx, null, 2))
     }
     else if (checkString(process.argv[2], "dumptransaction", "dumptx")) {
+      let txid = ''
       if (process.argv.length < 4) {
-        console.log("format: dumptransaction <txid>")
-        return 0
+        txid = readline.question('target txid > ');
+      } else {
+        txid = process.argv[3]
       }
-      const txid = process.argv[3]
       const gettransaction = await elementsCli.directExecute('gettransaction', [txid])
       console.log("tx.amount =>\n", gettransaction.amount)
       console.log("tx.details =>\n", gettransaction.details)
@@ -293,11 +304,12 @@ const main = async () =>{
       console.log("decoderawtransaction =>\n", JSON.stringify(tx, null, 2))
     }
     else if (checkString(process.argv[2], "unblindtransaction", "unblindtx")) {
+      let txid = ''
       if (process.argv.length < 4) {
-        console.log("format: unblindtransaction <txid>")
-        return 0
+        txid = readline.question('target txid > ');
+      } else {
+        txid = process.argv[3]
       }
-      const txid = process.argv[3]
       const gettransaction = await elementsCli.directExecute('gettransaction', [txid])
       console.log("tx.amount =>\n", gettransaction.amount)
       console.log("tx.details =>\n", gettransaction.details)
