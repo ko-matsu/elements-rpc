@@ -274,8 +274,17 @@ const main = async () =>{
       console.log("privkey =>\n", privkey)
       const rcvedbyaddress = await elementsCli.directExecute('getreceivedbyaddress', [address])
       console.log("getreceivedbyaddress =>\n", rcvedbyaddress)
-      const blindingkey = await elementsCli.directExecute('dumpblindingkey', [address])
-      console.log("blindingkey =>\n", blindingkey)
+      try {
+        const blindingkey = await elementsCli.directExecute('dumpblindingkey', [address])
+        console.log("blindingkey =>\n", blindingkey)
+      } catch (addrErr) {
+        if (addressinfo.confidential != addressinfo.unconfidential) {
+          const conf_addressinfo = await elementsCli.directExecute('validateaddress', [addressinfo.confidential])
+          console.log("confidential addressinfo =>\n", conf_addressinfo)
+          const blindingkey2 = await elementsCli.directExecute('dumpblindingkey', [addressinfo.confidential])
+          console.log("blindingkey =>\n", blindingkey2)
+        }
+      }
     }
     else if (checkString(process.argv[2], "btc_dumptransaction", "bdumptx")) {
       let txid = ''
