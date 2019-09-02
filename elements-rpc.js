@@ -41,6 +41,15 @@ let elementsCli = new jsonrpcClientLib.ElementsCli(elemConnInfo)
 let btcCli = new jsonrpcClientLib.BitcoinCli(btcConnInfo)
 
 // -----------------------------------------------------------------------------
+const generate_function = async function(client, blockNum, address){
+  await client.directExecute('generatetoaddress', [blockNum, address])
+    //for (var i = 0; i < 6; ++i) {
+      //const newAddress = await client.directExecute('getnewaddress', ['', 'bech32'])
+    //console.log("address =>\n", newAddress)
+    //await client.directExecute('sendtoaddress', [newAddress, 0.0002])
+    //await client.directExecute('sendtoaddress', [newAddress, 0.0001])
+    //}
+}
 
 // pegin function
 const pegin_function = async function(amount, btc_address, elem_address, blockNum){
@@ -74,7 +83,10 @@ const pegin_function = async function(amount, btc_address, elem_address, blockNu
   //console.log("signrawtransaction =>\n", signed_pegin_tx)
   const pegin_txid = await elementsCli.directExecute('sendrawtransaction', [signed_pegin_tx.hex])
   console.log("sendrawtransaction =>\n", pegin_txid)
-  await elementsCli.directExecute('generatetoaddress', [blockNum, elem_address])
+
+  await btcCli.directExecute('generatetoaddress', [blockNum, btc_address])
+  //await elementsCli.directExecute('generatetoaddress', [blockNum, elem_address])
+  await generate_function(elementsCli, blockNum, elem_address)
   const getbalance = await elementsCli.directExecute('getbalance', [])
   console.log("getbalance =>\n", getbalance)
 }
@@ -83,7 +95,8 @@ const pegin_function = async function(amount, btc_address, elem_address, blockNu
 const sendtoaddress_function = async function(client, address, amount, blockNum){
   const txid = await client.directExecute('sendtoaddress', [address, amount])
   console.log("sendtoaddress =>\n", txid)
-  await client.directExecute('generatetoaddress', [blockNum, address])
+  //await client.directExecute('generatetoaddress', [blockNum, address])
+  await generate_function(client, blockNum, address)
   const rcvedbyaddr = await client.directExecute('getreceivedbyaddress', [address])
   console.log("getreceivedbyaddress =>\n", rcvedbyaddr)
   return txid
@@ -100,7 +113,8 @@ const blindtransaction_function = async function(address, address2, amount, bloc
   //console.log("signrawtransaction =>\n", signed_pegin_tx)
   const blind_txid = await elementsCli.directExecute('sendrawtransaction', [signed_blind_tx.hex])
   console.log("sendrawtransaction =>\n", blind_txid)
-  await elementsCli.directExecute('generatetoaddress', [blockNum, address])
+  // await elementsCli.directExecute('generatetoaddress', [blockNum, address])
+  await generate_function(elementsCli, blockNum, address)
 }
 
 // -----------------------------------------------------------------------------
@@ -156,6 +170,11 @@ const commandData = {
     alias: 'unblindtx',
     parameter: '[<txid>]'
   },
+  listunspent: {
+    name: 'listunspent',
+    alias: undefined,
+    parameter: undefined
+  },
 }
 
 const helpDump = function(nameobj) {
@@ -201,6 +220,10 @@ const main = async () =>{
         console.log("argv[" + i + "] = " + process.argv[i]);
       }
       help()
+    }
+    else if (process.argv[2] == "listunspent") {
+      const listunspent_result = await elementsCli.directExecute('listunspent', [0, 100, []])
+      console.log("listunspent =>\n", listunspent_result)
     }
     else if (process.argv[2] == "getsidechaininfo") {
       const result = await elementsCli.getsidechaininfo()
