@@ -173,7 +173,7 @@ const commandData = {
   listunspent: {
     name: 'listunspent',
     alias: undefined,
-    parameter: undefined
+    parameter: '[<address>]'
   },
   getbalance: {
     name: 'getbalance',
@@ -252,8 +252,34 @@ const main = async () =>{
       help()
     }
     else if (process.argv[2] == "listunspent") {
-      const listunspent_result = await elementsCli.directExecute('listunspent', [0, 100, []])
-      console.log("listunspent =>\n", listunspent_result)
+      if (process.argv.length < 4) {
+        const listunspent_result = await elementsCli.directExecute('listunspent', [0, 100, []])
+        console.log("listunspent =>\n", listunspent_result)
+      }
+      else if (process.argv.length < 5) {
+        const address = process.argv[3]
+        const listunspent_result = await elementsCli.directExecute('listunspent', [0, 100, [address]])
+        console.log("listunspent =>\n", listunspent_result)
+      }
+      else {
+        const address = process.argv[3]
+        let asset = process.argv[4]
+        if (asset === 'bitcoin') {
+          const labels = await elementsCli.directExecute('dumpassetlabels', [])
+          asset = labels.bitcoin
+        }
+        if (address === '') {
+          const listunspent_result = await elementsCli.directExecute('listunspent', [0, 100, [], true, {"asset":asset}])
+          console.log("listunspent =>\n", listunspent_result)
+        } else {
+          const listunspent_result = await elementsCli.directExecute('listunspent', [0, 100, [address], true, {"asset":asset}])
+          console.log("listunspent =>\n", listunspent_result)
+        }
+      }
+    }
+    else if (process.argv[2] == "getbitcoinid") {
+      const labels = await elementsCli.directExecute('dumpassetlabels', [])
+      console.log("bitcoin =>\n", labels.bitcoin)
     }
     else if (process.argv[2] == "getbalance") {
       const getbalance = await elementsCli.directExecute('getbalance', [])
