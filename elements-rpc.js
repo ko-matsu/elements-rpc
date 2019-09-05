@@ -577,6 +577,10 @@ const main = async () =>{
         const tx = await elementsCli.directExecute('decoderawtransaction', [gettransaction.hex])
         console.log("decoderawtransaction =>\n", JSON.stringify(tx, null, 2))
       }
+      if (is_blind) {
+        const issue_key = await elementsCli.directExecute('dumpissuanceblindingkey', [txid, 0])
+        console.log("dumpissuanceblindingkey ->", issue_key)
+      }
     }
     /*
     else if (process.argv[2] == "sendblindtx") {
