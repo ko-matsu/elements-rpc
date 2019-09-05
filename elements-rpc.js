@@ -193,12 +193,12 @@ const commandData = {
   createrawtransaction_unspent: {
     name: 'createrawtransaction_unspent',
     alias: 'createtxu',
-    parameter: '[<fee>]'
+    parameter: '[<[send_addr_list]> <fee>]'
   },
   sendissue: {
     name: 'sendissue',
     alias: undefined,
-    parameter: undefined
+    parameter: '[<is_blind> <fee>]'
   },
 }
 
@@ -398,9 +398,19 @@ const main = async () =>{
     }
     else if (checkString(process.argv[2], "createrawtransaction_unspent", "createtxu")) {
       let fee = 0.0001
+      let sendAddrList = ['','']
+      let sendNum = 2
       if (process.argv.length >= 4) {
-        fee = process.argv[3]
+        sendNum = process.argv[3]
+        if (sendNum <= 1) {
+          sendNum = 1
+          sendAddrList = ['']
+        }
       }
+      if (process.argv.length >= 5) {
+        fee = process.argv[4]
+      }
+      let needAmount = fee * sendNum
       const assetlabels = await elementsCli.directExecute('dumpassetlabels', [])
       try {
         console.log(`bitcoin asset id = ${assetlabels.bitcoin}`)
@@ -413,7 +423,7 @@ const main = async () =>{
       let map = {}
       for (let idx=0; idx<listunspent_result.length; ++idx) {
         if (listunspent_result[idx].asset === assetlabels.bitcoin) {
-          if (listunspent_result[idx].amount > fee) {
+          if (listunspent_result[idx].amount > needAmount) {
             if (!is_find) {
               map = listunspent_result[idx]
               is_find = true
@@ -428,14 +438,29 @@ const main = async () =>{
         return 0
       }
       console.log("unspent >> ", map)
-      let amount = map.amount - fee
+      let amount = map.amount - (fee * sendNum)
       let txinList = [{"txid":map.txid, "vout":map.vout}]
       const addr = map.address
-      let txoutListStr = "[{\"" + addr + "\":" + amount.toFixed(8) + "},{\"fee\":" + fee + "}]"
+      sendAddrList[0] = addr
+      let txoutListStr = "[{\"" + addr + "\":" + amount.toFixed(8) + "}"
+      for (let index = 1; index < sendNum; ++index) {
+        if (sendAddrList.length <= index) {
+          const newAddr = await elementsCli.directExecute('getnewaddress', [])
+          sendAddrList.push(newAddr)
+        } else if (sendAddrList[index] === '') {
+          sendAddrList[index] = await elementsCli.directExecute('getnewaddress', [])
+        }
+        txoutListStr += ",{\"" + sendAddrList[index] + "\":" + fee.toFixed(8) + "}"
+      }
+      txoutListStr += ",{\"fee\":" + fee + "}]"
       let txoutList = JSON.parse(txoutListStr)
       const createtx = await elementsCli.directExecute('createrawtransaction', [txinList, txoutList])
       console.log("createtx =>\n", createtx)
-      console.log(`unspent amount : ${map.amount}\n`)
+      console.log(`addr[${addr}], amount : ${map.amount}`)
+      for (let index = 1; index < sendNum; ++index) {
+        const sendAddr = sendAddrList[index]
+        console.log(`addr[${sendAddr}], amount : ${fee}`)
+      }
     }
     else if (checkString(process.argv[2], "createrawtransaction_fund", "createtxf")) {
       const createtx = await elementsCli.directExecute('createrawtransaction', [[], [{"data":"00"}]])
@@ -446,9 +471,17 @@ const main = async () =>{
       console.log("decoderawtransaction =>\n", JSON.stringify(tx, null, 2))
     }
     else if (checkString(process.argv[2], "sendissue")) {
+      let is_blind = false
       let fee = 0.0001
       if (process.argv.length >= 4) {
-        fee = process.argv[3]
+        if ((process.argv[3] === true) || (process.argv[3] === 'true')) {
+          is_blind = true
+        } else {
+          console.log("input = " + process.argv[3])
+        }
+      }
+      if (process.argv.length >= 5) {
+        fee = process.argv[4]
       }
       const assetlabels = await elementsCli.directExecute('dumpassetlabels', [])
       try {
@@ -463,6 +496,15 @@ const main = async () =>{
       for (let idx=0; idx<listunspent_result.length; ++idx) {
         if (listunspent_result[idx].asset === assetlabels.bitcoin) {
           if (listunspent_result[idx].amount > fee) {
+            if (is_blind) {
+              if (listunspent_result[idx].amountblinder === '0000000000000000000000000000000000000000000000000000000000000000') {
+                continue
+              }
+            } else {
+              if (listunspent_result[idx].amountblinder !== '0000000000000000000000000000000000000000000000000000000000000000') {
+                continue
+              }
+            }
             if (!is_find) {
               map = listunspent_result[idx]
               is_find = true
@@ -479,25 +521,44 @@ const main = async () =>{
       console.log("unspent >> ", map)
       let amount = map.amount - fee
       let txinList = [{"txid":map.txid, "vout":map.vout}]
-      const addr = map.address
+      let addr = map.address
+      if (is_blind) {
+        const addrinfo = await elementsCli.directExecute('getaddressinfo', [addr])
+        addr = addrinfo.confidential
+        console.log("confidential addr =>\n", addr)
+      }
+
       let txoutListStr = "[{\"" + addr + "\":" + amount.toFixed(8) + "},{\"fee\":" + fee + "}]"
       let txoutList = JSON.parse(txoutListStr)
       const createtx = await elementsCli.directExecute('createrawtransaction', [txinList, txoutList])
       console.log("createtx =>\n", createtx)
       console.log(`unspent amount : ${map.amount}\n`)
 
-      const asset_address = await elementsCli.directExecute('getnewaddress', [])
+      let asset_address = await elementsCli.directExecute('getnewaddress', [])
       console.log("asset_address =>\n", asset_address)
-      const token_address = await elementsCli.directExecute('getnewaddress', [])
+      if (!is_blind) {
+        const asset_addrinfo = await elementsCli.directExecute('getaddressinfo', [asset_address])
+        asset_address = asset_addrinfo.unconfidential
+      }
+      let token_address = await elementsCli.directExecute('getnewaddress', [])
       console.log("token_address =>\n", token_address)
-      const issueasset = await elementsCli.directExecute('rawissueasset', [createtx, [{"asset_amount":10,"asset_address":asset_address,"token_amount":1,"token_address":token_address, "blind":false}]])
+      if (!is_blind) {
+        const token_addrinfo = await elementsCli.directExecute('getaddressinfo', [token_address])
+        token_address = token_addrinfo.unconfidential
+      }
+
+      const issueasset = await elementsCli.directExecute('rawissueasset', [createtx, [{"asset_amount":10,"asset_address":asset_address,"token_amount":1,"token_address":token_address, "blind":is_blind}]])
       console.log("issueasset =>\n", issueasset)
       let issue_hex = issueasset[issueasset.length - 1].hex
 
-      const blindtx = await elementsCli.directExecute('rawblindrawtransaction', [issue_hex, [map.amountblinder], [map.amount], [map.asset], [map.assetblinder]])
-      console.log("blindtx =>\n", blindtx)
+      let gen_tx = issue_hex
+      if (is_blind) {
+        gen_tx = await elementsCli.directExecute('blindrawtransaction', [issue_hex, true, [map.assetcommitment], true])
+        // gen_tx = await elementsCli.directExecute('rawblindrawtransaction', [issue_hex, [map.amountblinder], [map.amount], [map.asset], [map.assetblinder]])
+        console.log("blindtx =>\n", gen_tx)
+      }
 
-      const signTx = await elementsCli.directExecute('signrawtransactionwithwallet', [blindtx])
+      const signTx = await elementsCli.directExecute('signrawtransactionwithwallet', [gen_tx])
       console.log("signTx =>\n", signTx)
 
       const txid = await elementsCli.directExecute('sendrawtransaction', [signTx.hex])
