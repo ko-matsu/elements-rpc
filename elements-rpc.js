@@ -1,8 +1,9 @@
+// UTF-8
 'use strict';
-const jsonrpcClientLib = require('./jsonrpc-cli-lib')
 const fs = require('fs')
 const ini = require('ini')
 const readline = require('readline-sync');
+const jsonrpcClientLib = require('./jsonrpc-cli-lib')
 // process.on('unhandledRejection', console.dir);
 
 // load configure
@@ -39,6 +40,8 @@ const btcConnInfo = jsonrpcClientLib.CreateConnection(connInfo.bitcoin.host, con
 
 let elementsCli = new jsonrpcClientLib.ElementsCli(elemConnInfo)
 let btcCli = new jsonrpcClientLib.BitcoinCli(btcConnInfo)
+
+const listunspentMax = 9999999
 
 // -----------------------------------------------------------------------------
 const generate_function = async function(client, blockNum, address){
@@ -253,12 +256,12 @@ const main = async () =>{
     }
     else if (process.argv[2] == "listunspent") {
       if (process.argv.length < 4) {
-        const listunspent_result = await elementsCli.directExecute('listunspent', [0, 100, []])
+        const listunspent_result = await elementsCli.directExecute('listunspent', [0, listunspentMax, []])
         console.log("listunspent =>\n", listunspent_result)
       }
       else if (process.argv.length < 5) {
         const address = process.argv[3]
-        const listunspent_result = await elementsCli.directExecute('listunspent', [0, 100, [address]])
+        const listunspent_result = await elementsCli.directExecute('listunspent', [0, listunspentMax, [address]])
         console.log("listunspent =>\n", listunspent_result)
       }
       else {
@@ -269,10 +272,31 @@ const main = async () =>{
           asset = labels.bitcoin
         }
         if (address === '') {
-          const listunspent_result = await elementsCli.directExecute('listunspent', [0, 100, [], true, {"asset":asset}])
+          const listunspent_result = await elementsCli.directExecute('listunspent', [0, listunspentMax, [], true, {"asset":asset}])
           console.log("listunspent =>\n", listunspent_result)
         } else {
-          const listunspent_result = await elementsCli.directExecute('listunspent', [0, 100, [address], true, {"asset":asset}])
+          const listunspent_result = await elementsCli.directExecute('listunspent', [0, listunspentMax, [address], true, {"asset":asset}])
+          console.log("listunspent =>\n", listunspent_result)
+        }
+      }
+    }
+    else if (process.argv[2] == "btc_listunspent") {
+      if (process.argv.length < 4) {
+        const listunspent_result = await btcCli.directExecute('listunspent', [0, listunspentMax, []])
+        console.log("listunspent =>\n", listunspent_result)
+      }
+      else if (process.argv.length < 5) {
+        const address = process.argv[3]
+        const listunspent_result = await btcCli.directExecute('listunspent', [0, listunspentMax, [address]])
+        console.log("listunspent =>\n", listunspent_result)
+      }
+      else {
+        const address = process.argv[3]
+        if (address === '') {
+          const listunspent_result = await btcCli.directExecute('listunspent', [0, listunspentMax, []])
+          console.log("listunspent =>\n", listunspent_result)
+        } else {
+          const listunspent_result = await btcCli.directExecute('listunspent', [0, listunspentMax, [address]])
           console.log("listunspent =>\n", listunspent_result)
         }
       }
@@ -284,6 +308,14 @@ const main = async () =>{
     else if (process.argv[2] == "getbalance") {
       const getbalance = await elementsCli.directExecute('getbalance', [])
       console.log("getbalance =>\n", getbalance)
+    }
+    else if (process.argv[2] == "btc_listlabels") {
+      const listslabels = await btcCli.directExecute('listlabels', [])
+      console.log("listslabels =>\n", listslabels)
+    }
+    else if (process.argv[2] == "listlabels") {
+      const listslabels = await elementsCli.directExecute('listlabels', [])
+      console.log("listslabels =>\n", listslabels)
     }
     else if (process.argv[2] == "getsidechaininfo") {
       const result = await elementsCli.getsidechaininfo()
@@ -341,6 +373,61 @@ const main = async () =>{
       console.log("addressinfo =>\n", addressinfo)
       const privkey = await btcCli.directExecute('dumpprivkey', [address])
       console.log("privkey =>\n", privkey)
+      const rcvedbyaddress = await btcCli.directExecute('getreceivedbyaddress', [address])
+      console.log("getreceivedbyaddress =>\n", rcvedbyaddress)
+    }
+    else if (checkString(process.argv[2], "btc_labeladdress", "bladdr")) {
+      let label = ''
+      if (process.argv.length < 4) {
+        label = readline.question('target label > ');
+      } else {
+        label = process.argv[3]
+      }
+      const addressbylabels = await btcCli.directExecute('getaddressesbylabel', [label])
+      console.log("getaddressesbylabel =>\n", addressbylabels)
+      for(let key in addressbylabels){
+        const address = key
+        const validateaddress = await btcCli.directExecute('validateaddress', [address])
+        console.log("validateaddress =>\n", validateaddress)
+        const addressinfo = await btcCli.directExecute('getaddressinfo', [address])
+        console.log("addressinfo =>\n", addressinfo)
+        const privkey = await btcCli.directExecute('dumpprivkey', [address])
+        console.log("privkey =>\n", privkey)
+        const rcvedbyaddress = await btcCli.directExecute('getreceivedbyaddress', [address])
+        console.log("getreceivedbyaddress =>\n", rcvedbyaddress)
+      }
+    }
+    else if (checkString(process.argv[2], "labeladdress", "laddr")) {
+      let label = ''
+      if (process.argv.length < 4) {
+        label = readline.question('target label > ');
+      } else {
+        label = process.argv[3]
+      }
+      const addressbylabels = await elementsCli.directExecute('getaddressesbylabel', [label])
+      console.log("getaddressesbylabel =>\n", addressbylabels)
+      for(let key in addressbylabels){
+        const address = key
+        const validateaddress = await elementsCli.directExecute('validateaddress', [address])
+        console.log("validateaddress =>\n", validateaddress)
+        const addressinfo = await elementsCli.directExecute('getaddressinfo', [address])
+        console.log("addressinfo =>\n", addressinfo)
+        const privkey = await elementsCli.directExecute('dumpprivkey', [address])
+        console.log("privkey =>\n", privkey)
+        const rcvedbyaddress = await elementsCli.directExecute('getreceivedbyaddress', [address])
+        console.log("getreceivedbyaddress =>\n", rcvedbyaddress)
+        try {
+          const blindingkey = await elementsCli.directExecute('dumpblindingkey', [address])
+          console.log("blindingkey =>\n", blindingkey)
+        } catch (addrErr) {
+          if (addressinfo.confidential != addressinfo.unconfidential) {
+            const conf_addressinfo = await elementsCli.directExecute('validateaddress', [addressinfo.confidential])
+            console.log("confidential addressinfo =>\n", conf_addressinfo)
+            const blindingkey2 = await elementsCli.directExecute('dumpblindingkey', [addressinfo.confidential])
+            console.log("blindingkey =>\n", blindingkey2)
+          }
+        }
+      }
     }
     else if (checkString(process.argv[2], "validaddress", "vaddr")) {
       let address = ''
@@ -444,7 +531,7 @@ const main = async () =>{
         console.log("bitcoin label not found.\n")
       }
 
-      const listunspent_result = await elementsCli.directExecute('listunspent', [0, 100, []])
+      const listunspent_result = await elementsCli.directExecute('listunspent', [0, listunspentMax, []])
       let is_find = false
       let map = {}
       for (let idx=0; idx<listunspent_result.length; ++idx) {
@@ -516,7 +603,7 @@ const main = async () =>{
         console.log("bitcoin label not found.\n")
       }
 
-      const listunspent_result = await elementsCli.directExecute('listunspent', [0, 100, []])
+      const listunspent_result = await elementsCli.directExecute('listunspent', [0, listunspentMax, []])
       let is_find = false
       let map = {}
       for (let idx=0; idx<listunspent_result.length; ++idx) {
@@ -607,6 +694,42 @@ const main = async () =>{
         const issue_key = await elementsCli.directExecute('dumpissuanceblindingkey', [txid, 0])
         console.log("dumpissuanceblindingkey ->", issue_key)
       }
+    }
+    else if (checkString(process.argv[2], "pegout")) {
+      if (process.argv.length < 5) {
+        console.log("format: pegout <amount> <btc_address>")
+        return 0
+      }
+      const amount = process.argv[3]
+      const btcAddr = process.argv[4]
+      const fee = 0.0001
+
+      const rcv1 = await btcCli.directExecute('getreceivedbyaddress', [btcAddr])
+      console.log("btc getreceivedbyaddress =>\n", rcv1)
+      const txid = await elementsCli.directExecute('sendtomainchain', [btcAddr, amount])
+      console.log("pegout txid =>\n", txid)
+
+      const tx = await elementsCli.directExecute('gettransaction', [txid])
+      const dectx = await elementsCli.directExecute('decoderawtransaction', [tx.hex])
+      console.log("tx.amount =>\n", tx.amount)
+      console.log("tx.details =>\n", tx.details)
+      console.log("decoderawtransaction =>\n", JSON.stringify(dectx, null, 2))
+      const ubtx = await elementsCli.directExecute('unblindrawtransaction', [tx.hex])
+      const ubdectx = await elementsCli.directExecute('decoderawtransaction', [ubtx.hex])
+
+      const addr = await elementsCli.directExecute('getnewaddress', [])
+      const assets = await elementsCli.directExecute('getbalance', [])
+      const send = await elementsCli.directExecute('sendtoaddress', [addr, assets.bitcoin, "", "", true])
+      console.log("sendtoaddress =>\n", send)
+      // elements-cli.exe sendtoaddress Azpk4e1w5xq74pw6hYj37WvURgdzq1sgqVwycrG58Xu2eZ1D5pz3usrXLtvRCCGwg9egWwCi3qwwSPZ7 5299.99977740 "" "" true 
+      const blockNum = 105
+      await elementsCli.directExecute('generatetoaddress', [blockNum, addr])
+      await btcCli.directExecute('generatetoaddress', [blockNum, btcAddr])
+
+      const rcv2 = await btcCli.directExecute('getreceivedbyaddress', [btcAddr])
+      console.log("btc getreceivedbyaddress =>\n", rcv2)
+
+      // elements-cli.exe sendtoaddress Azpk4e1w5xq74pw6hYj37WvURgdzq1sgqVwycrG58Xu2eZ1D5pz3usrXLtvRCCGwg9egWwCi3qwwSPZ7 5299.99977740 "" "" true
     }
     /*
     else if (process.argv[2] == "sendblindtx") {
