@@ -143,10 +143,25 @@ const commandData = {
     alias: 'peg',
     parameter: '<amount> <btc_address> <elem_address>'
   },
+  pegin_auto: {
+    name: 'pegin_auto',
+    alias: 'apeg',
+    parameter: undefined
+  },
   pegin_generate: {
     name: 'pegin_generate',
     alias: 'peg2snd',
     parameter: '<elem_address> <amount> <btc_address> (<nBlock>)'
+  },
+  generate: {
+    name: 'generate',
+    alias: 'gen',
+    parameter: undefined
+  },
+  generate_confidential: {
+    name: 'generate_confidential',
+    alias: 'genct',
+    parameter: undefined
   },
   btc_validaddress: {
     name: 'btc_validaddress',
@@ -203,6 +218,11 @@ const commandData = {
     alias: undefined,
     parameter: '[<is_blind> <fee>]'
   },
+  sendreissue: {
+    name: 'sendissue',
+    alias: undefined,
+    parameter: '[<is_blind> <fee>]'
+  },
 }
 
 const helpDump = function(nameobj) {
@@ -222,6 +242,7 @@ const help = function() {
   helpDump(commandData.sendtoaddress)
   helpDump(commandData.btc_sendtoaddress)
   helpDump(commandData.pegin)
+  helpDump(commandData.pegin_auto)
   helpDump(commandData.pegin_generate)
   helpDump(commandData.validaddress)
   helpDump(commandData.btc_validaddress)
@@ -233,6 +254,8 @@ const help = function() {
   helpDump(commandData.createrawtransaction_single)
   helpDump(commandData.createrawtransaction_fund)
   helpDump(commandData.createrawtransaction_unspent)
+  helpDump(commandData.sendissue)
+  helpDump(commandData.sendreissue)
 }
 
 const checkString = function(arg, matchText, alias = undefined){
@@ -359,6 +382,37 @@ const main = async () =>{
         return 0
       }
       await pegin_function(process.argv[3], process.argv[4], process.argv[5], 105)
+    }
+    else if (checkString(process.argv[2], "pegin_auto", "apeg")) {
+      const amount = 1000.0
+      const btc_address = await btcCli.directExecute('getnewaddress', [])
+      console.log("BTC address: ", btc_address)
+      let elem_address = await elementsCli.directExecute('getnewaddress', [])
+      console.log("elements confidential address: ", elem_address)
+      const addressinfo = await elementsCli.directExecute('getaddressinfo', [elem_address])
+      elem_address = addressinfo.unconfidential
+      console.log("elements address: ", elem_address)
+      await pegin_function(amount, btc_address, elem_address, 105)
+    }
+    else if (checkString(process.argv[2], "pegingenerate_auto", "gen")) {
+      const amount = 0.1
+      let address = await elementsCli.directExecute('getnewaddress', [])
+      const addressinfo = await elementsCli.directExecute('getaddressinfo', [address])
+      address = addressinfo.unconfidential
+      console.log("elements address: ", address)
+      for (let count = 0; count < 10; ++count) {
+        const txid = await elementsCli.directExecute('sendtoaddress', [address, amount])
+        console.log("sendtoaddress =>\n", txid)
+      }
+    }
+    else if (checkString(process.argv[2], "generate_confidential", "genct")) {
+      const amount = 0.1
+      let address = await elementsCli.directExecute('getnewaddress', [])
+      console.log("elements address: ", address)
+      for (let count = 0; count < 10; ++count) {
+        const txid = await elementsCli.directExecute('sendtoaddress', [address, amount])
+        console.log("sendtoaddress =>\n", txid)
+      }
     }
     else if (checkString(process.argv[2], "btc_validaddress", "bvaddr")) {
       let address = ''
@@ -582,6 +636,227 @@ const main = async () =>{
       console.log("fund_tx =>\n", fund_tx)
       const tx = await elementsCli.directExecute('decoderawtransaction', [fund_tx.hex])
       console.log("decoderawtransaction =>\n", JSON.stringify(tx, null, 2))
+    }
+    else if (checkString(process.argv[2], "sendreissue")) {
+      let is_blind = true
+      let fee = 0.0001
+      if (process.argv.length >= 4) {
+        if ((process.argv[3] === false) || (process.argv[3] === 'false')) {
+          console.log("reissue command is blind only.")
+          return 0;
+        } else {
+          console.log("input = " + process.argv[3])
+        }
+      }
+      if (process.argv.length >= 5) {
+        fee = process.argv[4]
+      }
+      const blockNum = 105
+      const assetlabels = await elementsCli.directExecute('dumpassetlabels', [])
+      try {
+        console.log(`bitcoin asset id = ${assetlabels.bitcoin}`)
+      } catch (assetErr) {
+        console.log("bitcoin label not found.\n")
+      }
+
+      const listunspent_result = await elementsCli.directExecute('listunspent', [0, listunspentMax, []])
+      let is_find = false
+      let is_find2 = false
+      let map = {}
+      let map2 = {}
+      for (let idx=0; idx<listunspent_result.length; ++idx) {
+        if (listunspent_result[idx].asset === assetlabels.bitcoin) {
+          if (listunspent_result[idx].amount > fee) {
+            if (is_blind) {
+              if (listunspent_result[idx].amountblinder === '0000000000000000000000000000000000000000000000000000000000000000') {
+                continue
+              }
+            } else {
+              if (listunspent_result[idx].amountblinder !== '0000000000000000000000000000000000000000000000000000000000000000') {
+                continue
+              }
+            }
+            if (!is_find) {
+              map = listunspent_result[idx]
+              is_find = true
+            } else if (!is_find2) {
+              map2 = listunspent_result[idx]
+              is_find2 = true
+            } else if (listunspent_result[idx].amount < map.amount) {
+              map = listunspent_result[idx]
+            } else if (listunspent_result[idx].amount < map2.amount) {
+              map2 = listunspent_result[idx]
+            }
+          }
+        }
+      }
+      if (!is_find) {
+        console.log("listunspent fail. low fee.")
+        return 0
+      }
+      if (!is_find2) {
+        console.log("listunspent fail2. low fee.")
+        return 0
+      }
+      console.log("unspent >> ", map)
+      let amount = map.amount - fee
+      let txinList = [{"txid":map.txid, "vout":map.vout}]
+      let addr = map.address
+      if (is_blind) {
+        const addrinfo = await elementsCli.directExecute('getaddressinfo', [addr])
+        addr = addrinfo.confidential
+        console.log("confidential addr =>\n", addr)
+      }
+
+      let txoutListStr = "[{\"" + addr + "\":" + amount.toFixed(8) + "},{\"fee\":" + fee + "}]"
+      let txoutList = JSON.parse(txoutListStr)
+      const createtx = await elementsCli.directExecute('createrawtransaction', [txinList, txoutList])
+      console.log("createtx =>\n", createtx)
+      console.log(`unspent amount : ${map.amount}\n`)
+
+      let asset_address = await elementsCli.directExecute('getnewaddress', [])
+      console.log("asset_address =>\n", asset_address)
+      if (!is_blind) {
+        const asset_addrinfo = await elementsCli.directExecute('getaddressinfo', [asset_address])
+        asset_address = asset_addrinfo.unconfidential
+      }
+      let token_address = await elementsCli.directExecute('getnewaddress', [])
+      console.log("token_address =>\n", token_address)
+      if (!is_blind) {
+        const token_addrinfo = await elementsCli.directExecute('getaddressinfo', [token_address])
+        token_address = token_addrinfo.unconfidential
+      }
+
+      const token_amount = 1
+      const issueasset = await elementsCli.directExecute('rawissueasset', [createtx, [{"asset_amount":10,"asset_address":asset_address,"token_amount":token_amount,"token_address":token_address, "blind":is_blind}]])
+      console.log("issueasset =>\n", issueasset)
+      let issue_hex = issueasset[issueasset.length - 1].hex
+
+      let gen_tx = issue_hex
+      if (is_blind) {
+        gen_tx = await elementsCli.directExecute('blindrawtransaction', [issue_hex, true, [map.assetcommitment], true])
+        // gen_tx = await elementsCli.directExecute('rawblindrawtransaction', [issue_hex, [map.amountblinder], [map.amount], [map.asset], [map.assetblinder]])
+        console.log("blindtx =>\n", gen_tx)
+      }
+
+      const signTx = await elementsCli.directExecute('signrawtransactionwithwallet', [gen_tx])
+      console.log("signTx =>\n", signTx)
+
+      const issueTxid = await elementsCli.directExecute('sendrawtransaction', [signTx.hex])
+      console.log("issueTxid =>\n", issueTxid)
+
+      // await elementsCli.directExecute('generatetoaddress', [blockNum, addr])
+
+      let issueRawTx = await elementsCli.directExecute('gettransaction', [issueTxid])
+
+      gen_tx = issueRawTx.hex
+      if (is_blind) {
+        const ctissueTx = await elementsCli.directExecute('decoderawtransaction', [gen_tx])
+        console.log("blinded issueTx =>\n", JSON.stringify(ctissueTx, null, 2))
+        const ubtx = await elementsCli.directExecute('unblindrawtransaction', [gen_tx])
+        gen_tx = ubtx.hex
+      }
+      const issueTx = await elementsCli.directExecute('decoderawtransaction', [gen_tx])
+      console.log("issueTx =>\n", JSON.stringify(issueTx, null, 2))
+
+      let token_vout = 3
+      if (issueTx.vout[0].value == 1) {
+        token_vout = 0
+      }
+      else if (issueTx.vout[1].value == 1) {
+        token_vout = 1
+      }
+      else if (issueTx.vout[2].value == 1) {
+        token_vout = 2
+      }
+
+      // キー変更は、`importmasterblindingkey "hexkey"`
+      // listunspentのscriptPubKeyでbech32かどうかは判定可能
+
+      // getbalance
+      const issue_data = issueasset[issueasset.length - 1]
+      const balance1 = await elementsCli.directExecute('getbalance', [])
+      console.log("issued asset amount = ", balance1[issue_data.asset])
+      console.log("issued token amount = ", balance1[issue_data.token])
+
+      // createrawtransaction(in:token,btc out:token,btc,fee)
+      console.log("unspent >> ", map2)
+      amount = map2.amount - fee
+      txinList = [{"txid":issueTxid, "vout":token_vout},{"txid":map2.txid, "vout":map2.vout}]
+      txoutListStr = "[{\"" + token_address + "\":" + token_amount.toFixed(8) + "},{\"" + addr + "\":" + amount.toFixed(8) + "},{\"fee\":" + fee.toFixed(8) + "}]"
+      txoutList = JSON.parse(txoutListStr)
+      const txoutAssetListStr = "{\"" + token_address + "\":\"" + issue_data.token + "\"}"
+      const txoutAssetList = JSON.parse(txoutAssetListStr)
+      const creatertx = await elementsCli.directExecute('createrawtransaction', [txinList, txoutList, 0, false, txoutAssetList])
+      console.log("creatertx =>\n", creatertx)
+      console.log(`unspent amount : ${map2.amount}\n`)
+
+      let asset_blinder = '0000000000000000000000000000000000000000000000000000000000000000'
+      const token_utxo = await elementsCli.directExecute('listunspent', [0, listunspentMax, [], true, {"asset":issue_data.token}])
+      console.log("token_utxo =>\n", token_utxo)
+      if (token_utxo.length == 1) {
+        asset_blinder = token_utxo[0].assetblinder
+      }
+      const tokenCommitment = token_utxo[0].assetcommitment
+      // rawreissueasset   [hex, [{"asset_amount":15, "asset_address":asset_address, "input_index":0, "asset_blinder":map2.assetblinder, "entropy":issue_data.entropy}]]
+      const rawreissueasset = await elementsCli.directExecute('rawreissueasset', [creatertx, [{"asset_amount":15,"asset_address":asset_address,"input_index":0,"asset_blinder":asset_blinder, "entropy":issue_data.entropy}]])
+      console.log("reissueasset =>\n", rawreissueasset)
+      let reissue_hex = rawreissueasset.hex
+      const rawreissue_tx = await elementsCli.directExecute('decoderawtransaction', [reissue_hex])
+      console.log("rawreissue_tx =>\n", JSON.stringify(rawreissue_tx, null, 2))
+
+      gen_tx = reissue_hex
+      if (is_blind) {
+        console.log("token_utxo =>\n", tokenCommitment)
+        console.log("map2       =>\n", map2.assetcommitment)
+        gen_tx = await elementsCli.directExecute('blindrawtransaction', [gen_tx, true, [tokenCommitment, map2.assetcommitment], true])
+        // gen_tx = await elementsCli.directExecute('rawblindrawtransaction', [reissue_hex, [map.amountblinder], [map.amount], [map.asset], [map.assetblinder]])
+        console.log("blindtx =>\n", gen_tx)
+      }
+
+      const signRiTx = await elementsCli.directExecute('signrawtransactionwithwallet', [gen_tx])
+      console.log("signTx =>\n", signRiTx)
+
+      
+      let txid = ''
+      try {
+        txid = await elementsCli.directExecute('sendrawtransaction', [signRiTx.hex])
+        console.log("reissueTxid =>\n", txid)
+      } catch (reissueErr) {
+        gen_tx = signRiTx.hex
+        if (is_blind) {
+          const ubtx = await elementsCli.directExecute('unblindrawtransaction', [gen_tx])
+          gen_tx = ubtx.hex
+        }
+        gen_tx = await elementsCli.directExecute('decoderawtransaction', [gen_tx])
+        console.log("fail tx =>\n", JSON.stringify(gen_tx, null, 2))
+        console.log("issueasset =>\n", issueasset)
+        throw reissueErr
+      }
+
+      await elementsCli.directExecute('generatetoaddress', [blockNum, addr])
+
+      const gettransaction = await elementsCli.directExecute('gettransaction', [txid])
+      console.log("tx.amount =>\n", gettransaction.amount)
+      console.log("tx.details =>\n", gettransaction.details)
+      try {
+        const unblind_tx = await elementsCli.directExecute('unblindrawtransaction', [gettransaction.hex])
+        const tx = await elementsCli.directExecute('decoderawtransaction', [unblind_tx.hex])
+        const blind_tx = await elementsCli.directExecute('decoderawtransaction', [gettransaction.hex])
+        console.log("decoderawtransaction =>\n", JSON.stringify(blind_tx, null, 2))
+        console.log("unblind_decoderawtransaction =>\n", JSON.stringify(tx, null, 2))
+      } catch (assetErr) {
+        const tx = await elementsCli.directExecute('decoderawtransaction', [gettransaction.hex])
+        console.log("decoderawtransaction =>\n", JSON.stringify(tx, null, 2))
+      }
+      if (is_blind) {
+        const issue_key = await elementsCli.directExecute('dumpissuanceblindingkey', [txid, 0])
+        console.log("dumpissuanceblindingkey ->", issue_key)
+      }
+
+      const balance2 = await elementsCli.directExecute('getbalance', [])
+      console.log("reissued asset amount = ", balance2[issue_data.asset])
+      console.log("reissued token amount = ", balance2[issue_data.token])
     }
     else if (checkString(process.argv[2], "sendissue")) {
       let is_blind = false
