@@ -42,6 +42,7 @@ let elementsCli = new jsonrpcClientLib.ElementsCli(elemConnInfo)
 let btcCli = new jsonrpcClientLib.BitcoinCli(btcConnInfo)
 
 const listunspentMax = 9999999
+const fix_masterblindingkey = ''  // bd9988aed6646c87a14fa5b9b82cac541074b0de03ee2f8851d79265e888ae12
 
 // -----------------------------------------------------------------------------
 const generate_function = async function(client, blockNum, address){
@@ -163,6 +164,11 @@ const commandData = {
     alias: 'genct',
     parameter: undefined
   },
+  pegout: {
+    name: 'pegout',
+    alias: undefined,
+    parameter: '<amount> <btc_address>'
+  },
   btc_validaddress: {
     name: 'btc_validaddress',
     alias: 'bvaddr',
@@ -190,7 +196,7 @@ const commandData = {
   },
   listunspent: {
     name: 'listunspent',
-    alias: undefined,
+    alias: 'utxo',
     parameter: '[<address>]'
   },
   getbalance: {
@@ -277,7 +283,7 @@ const main = async () =>{
       }
       help()
     }
-    else if (process.argv[2] == "listunspent") {
+    else if (checkString(process.argv[2], "listunspent", "utxo")) {
       if (process.argv.length < 4) {
         const listunspent_result = await elementsCli.directExecute('listunspent', [0, listunspentMax, []])
         console.log("listunspent =>\n", listunspent_result)
@@ -384,7 +390,7 @@ const main = async () =>{
       await pegin_function(process.argv[3], process.argv[4], process.argv[5], 105)
     }
     else if (checkString(process.argv[2], "pegin_auto", "apeg")) {
-      const amount = 1000.0
+      let amount = 1000.0
       const btc_address = await btcCli.directExecute('getnewaddress', [])
       console.log("BTC address: ", btc_address)
       let elem_address = await elementsCli.directExecute('getnewaddress', [])
@@ -392,7 +398,49 @@ const main = async () =>{
       const addressinfo = await elementsCli.directExecute('getaddressinfo', [elem_address])
       elem_address = addressinfo.unconfidential
       console.log("elements address: ", elem_address)
-      await pegin_function(amount, btc_address, elem_address, 105)
+      while (true) {
+        try {
+          await pegin_function(amount, btc_address, elem_address, 105)
+          break
+        } catch (pegError) {
+          let err = JSON.parse(pegError)
+          if ((err.error.message === 'Insufficient funds')) {
+            amount /= 10
+          } else {
+            throw pegError
+          }
+        }
+      }
+    }
+    else if (checkString(process.argv[2], "pegin_auto_confidential", "apegct")) {
+      let amount = 1000.0
+      const btc_address = await btcCli.directExecute('getnewaddress', [])
+      console.log("BTC address: ", btc_address)
+      let elem_address = await elementsCli.directExecute('getnewaddress', [])
+      console.log("elements address: ", elem_address)
+      while (true) {
+        try {
+          await pegin_function(amount, btc_address, elem_address, 105)
+          break
+        } catch (pegError) {
+          let err = JSON.parse(pegError)
+          if ((err.error.message === 'Insufficient funds')) {
+            amount /= 10
+          } else {
+            throw pegError
+          }
+        }
+      }
+    }
+    else if (checkString(process.argv[2], "btc_generate_auto", "bgen")) {
+      const amount = 0.1
+      let address = await btcCli.directExecute('getnewaddress', [])
+      console.log("btc address: ", address)
+      for (let count = 0; count < 10; ++count) {
+        await btcCli.directExecute('generatetoaddress', [105, address])
+        const txid = await btcCli.directExecute('sendtoaddress', [address, amount])
+        console.log("sendtoaddress =>\n", txid)
+      }
     }
     else if (checkString(process.argv[2], "pegingenerate_auto", "gen")) {
       const amount = 0.1
@@ -425,10 +473,10 @@ const main = async () =>{
       console.log("validateaddress =>\n", validateaddress)
       const addressinfo = await btcCli.directExecute('getaddressinfo', [address])
       console.log("addressinfo =>\n", addressinfo)
-      const privkey = await btcCli.directExecute('dumpprivkey', [address])
-      console.log("privkey =>\n", privkey)
       const rcvedbyaddress = await btcCli.directExecute('getreceivedbyaddress', [address])
       console.log("getreceivedbyaddress =>\n", rcvedbyaddress)
+      const privkey = await btcCli.directExecute('dumpprivkey', [address])
+      console.log("privkey =>\n", privkey)
     }
     else if (checkString(process.argv[2], "btc_labeladdress", "bladdr")) {
       let label = ''
@@ -1005,6 +1053,52 @@ const main = async () =>{
       console.log("btc getreceivedbyaddress =>\n", rcv2)
 
       // elements-cli.exe sendtoaddress Azpk4e1w5xq74pw6hYj37WvURgdzq1sgqVwycrG58Xu2eZ1D5pz3usrXLtvRCCGwg9egWwCi3qwwSPZ7 5299.99977740 "" "" true
+    }
+    else if (process.argv[2] == "createpegoutblock") {
+      let xpub = ''
+      if (process.argv.length < 4) {
+        xpub = readline.question('target xpub > ');
+      } else {
+        xpub = process.argv[3]
+      }
+
+      const xpubKeys = `sh(wpkh(${xpub}/0/*))`
+      const pegoutwallet = await elementsCli.directExecute('initpegoutwallet', [xpubKeys])
+      console.log("pegoutwallet ->", pegoutwallet)
+
+      let pakinfo = pegoutwallet.pakentry
+      // "pak=0260fd8ada8fae8e2a7399591aec5c999f6344eb2fc4bab83db94cef1a757c617a:026289577a6f0a3f8733716f07404ff2c07b47a53b62fdde1a4d6ce476c8e8bba4"
+      pakinfo = pakinfo.replace(/pak=/g, "")
+      pakinfo = pakinfo.replace(/:/g, "")
+      let blockinfoStr = "{\"signblockscript\":\"00204ae81572f06e1b88fd5ced7a1a000945432e83e1551e6f721ee9c00b8cc33260\",\"max_block_witness\":3,\"fedpegscript\":\"51\",\"extension_space\":[\"" + pakinfo + "\"]}"
+      let blockinfo = JSON.parse(blockinfoStr)
+      console.log("blockinfo ->", blockinfo)
+      for (let count = 0; count < 9; ++count) {
+        let newblock = await elementsCli.directExecute('getnewblockhex', [0, blockinfo])
+        /*
+        let sig = []
+        try {
+          sig = await elementsCli.directExecute('signblock', [newblock, ""])
+        } catch (sigError) {
+        }
+        try {
+          let combine = await elementsCli.directExecute('combineblocksigs', [newblock, sig, ""])
+          newblock = combine.hex
+        } catch (combError) {
+          console.log("combError ->", combError)
+        }
+        */
+        // console.log("newblock ->", newblock)
+        try {
+          const submit = await elementsCli.directExecute('submitblock', [newblock])
+          // console.log("submit ->", submit)
+        } catch (submitError) {
+          // console.log("submitError ->", submitError)
+          // どうもレスポンスが空のためエラーが発生している模様
+        }
+      }
+      const blockchaininfo = await elementsCli.directExecute('getblockchaininfo', [])
+      console.log("getblockchaininfo ->", blockchaininfo)
     }
     /*
     else if (process.argv[2] == "sendblindtx") {
