@@ -10,7 +10,9 @@
   "license": "MIT",
   "dependencies": {
     "ini": "*",
-    "readline-sync": "*"
+    "readline-sync": "*",
+    "node-libcurl": "*",
+    "zlib":"*"
   },
   "devDependencies": {
     "npm-run-all": "^4.1.5",

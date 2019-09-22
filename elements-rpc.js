@@ -244,24 +244,9 @@ const helpDump = function(nameobj) {
 
 const help = function() {
   console.log('usage:')
-  helpDump(commandData.getsidechaininfo)
-  helpDump(commandData.sendtoaddress)
-  helpDump(commandData.btc_sendtoaddress)
-  helpDump(commandData.pegin)
-  helpDump(commandData.pegin_auto)
-  helpDump(commandData.pegin_generate)
-  helpDump(commandData.validaddress)
-  helpDump(commandData.btc_validaddress)
-  helpDump(commandData.dumptransaction)
-  helpDump(commandData.btc_dumptransaction)
-  helpDump(commandData.unblindtransaction)
-  helpDump(commandData.listunspent)
-  helpDump(commandData.getbalance)
-  helpDump(commandData.createrawtransaction_single)
-  helpDump(commandData.createrawtransaction_fund)
-  helpDump(commandData.createrawtransaction_unspent)
-  helpDump(commandData.sendissue)
-  helpDump(commandData.sendreissue)
+  for (const key in commandData) {
+    helpDump(commandData[key])
+  }
 }
 
 const checkString = function(arg, matchText, alias = undefined){
@@ -1062,7 +1047,7 @@ const main = async () =>{
         xpub = process.argv[3]
       }
 
-      const xpubKeys = `sh(wpkh(${xpub}/0/*))`
+      const xpubKeys = "sh(wpkh(" + xpub + "/0/" + "*))"
       const pegoutwallet = await elementsCli.directExecute('initpegoutwallet', [xpubKeys])
       console.log("pegoutwallet ->", pegoutwallet)
 
