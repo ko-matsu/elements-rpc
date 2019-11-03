@@ -3,116 +3,27 @@
 const fs = require('fs')
 const ini = require('ini')
 const readline = require('readline-sync');
-const { curly, Curl } = require('node-libcurl');    // https://www.npmjs.com/package/node-libcurl
+// const { curly, Curl } = require('node-libcurl');    // https://www.npmjs.com/package/node-libcurl
 const zlib = require('zlib');
+const request = require('request');
 
 // -----------------------------------------------------------------------------
 
 const commandData = {
-  getsidechaininfo: {
-    name: 'getsidechaininfo',
+  gettx: {
+    name: 'gettx',
     alias: undefined,
-    parameter: undefined
+    parameter: '[txid]'
   },
-  sendtoaddress: {
-    name: 'sendtoaddress',
-    alias: 'sndaddr',
-    parameter: '<address> <amount> (<nBlock>)'
-  },
-  btc_sendtoaddress: {
-    name: 'btc_sendtoaddress',
-    alias: 'bsndaddr',
-    parameter: '<address> <amount> (<nBlock>)'
-  },
-  pegin: {
-    name: 'pegin',
-    alias: 'peg',
-    parameter: '<amount> <btc_address> <elem_address>'
-  },
-  pegin_auto: {
-    name: 'pegin_auto',
-    alias: 'apeg',
-    parameter: undefined
-  },
-  pegin_generate: {
-    name: 'pegin_generate',
-    alias: 'peg2snd',
-    parameter: '<elem_address> <amount> <btc_address> (<nBlock>)'
-  },
-  generate: {
-    name: 'generate',
-    alias: 'gen',
-    parameter: undefined
-  },
-  generate_confidential: {
-    name: 'generate_confidential',
-    alias: 'genct',
-    parameter: undefined
-  },
-  pegout: {
-    name: 'pegout',
+  tgettx: {
+    name: 'tgettx',
     alias: undefined,
-    parameter: '<amount> <btc_address>'
+    parameter: '[txid]'
   },
-  btc_validaddress: {
-    name: 'btc_validaddress',
-    alias: 'bvaddr',
-    parameter: '[<address>]'
-  },
-  validaddress: {
-    name: 'validaddress',
-    alias: 'vaddr',
-    parameter: '[<address>]'
-  },
-  dumptransaction: {
-    name: 'dumptransaction',
-    alias: 'dumptx',
-    parameter: '[<txid>]'
-  },
-  btc_dumptransaction: {
-    name: 'btc_dumptransaction',
-    alias: 'bdumptx',
-    parameter: '[<txid>]'
-  },
-  unblindtransaction: {
-    name: 'unblindtransaction',
-    alias: 'unblindtx',
-    parameter: '[<txid>]'
-  },
-  listunspent: {
-    name: 'listunspent',
-    alias: 'utxo',
-    parameter: '[<address>]'
-  },
-  getbalance: {
-    name: 'getbalance',
+  lgettx: {
+    name: 'lgettx',
     alias: undefined,
-    parameter: undefined
-  },
-  createrawtransaction_single: {
-    name: 'createrawtransaction_single',
-    alias: 'createtx1',
-    parameter: '<txid> <vout> <address> <amount> <fee>'
-  },
-  createrawtransaction_fund: {
-    name: 'createrawtransaction_fund',
-    alias: 'createtxf',
-    parameter: undefined
-  },
-  createrawtransaction_unspent: {
-    name: 'createrawtransaction_unspent',
-    alias: 'createtxu',
-    parameter: '[<[send_addr_list]> <fee>]'
-  },
-  sendissue: {
-    name: 'sendissue',
-    alias: undefined,
-    parameter: '[<is_blind> <fee>]'
-  },
-  sendreissue: {
-    name: 'sendissue',
-    alias: undefined,
-    parameter: '[<is_blind> <fee>]'
+    parameter: '[txid]'
   },
 }
 
@@ -156,10 +67,45 @@ const getPrefix = function(command, test_command, liquid_command) {
   return prefix
 }
 
+function doRequest(options) {
+  return new Promise(function (resolve, reject) {
+    request(options, function (error, res, body) {
+      // console.log(res);
+      if (!error && res && res["statusCode"] && (res.statusCode === 200)) {
+        const statusCode = res.statusCode;
+        resolve({statusCode: statusCode, data: body, headers: res});
+      } else {
+        reject(error);
+      }
+    });
+  });
+}
+
+const getRequest = async function(url) {
+  const headers = {
+  };
+  const requestOptions = {
+    url: url,
+    method: "GET",
+    headers: headers,
+    gzip: true
+  };
+  /*
+  const requestOptions = {
+    url: url,
+    method: "POST",
+    headers: headers,
+    json: payload
+  };*/
+  const res = await doRequest(requestOptions);
+  return res;
+}
+
 const callGet = async function(url) {
-  const opt = { 'SSL_VERIFYPEER':false, 'ENCODING':'gzip' }
   console.log(`url = ${url}`)
-  const { statusCode, data, headers } = await curly.get(url, opt)
+  // const opt = { 'SSL_VERIFYPEER':false, 'ENCODING':'gzip' }
+  // const { statusCode, data, headers } = await curly.get(url, opt)
+  const { statusCode, data, headers } = await getRequest(url)
   console.log(`status = ${statusCode}`)
   if ((statusCode >= 200) && (statusCode < 300)) {
     // console.log(`headers = ${headers}`)
@@ -168,6 +114,7 @@ const callGet = async function(url) {
       result = zlib.gunzipSync(data);
       console.log(`data(unzip) = ${result}`)
     } catch (error) {
+      // do nothing
     }
     try {
       let jsonData = JSON.parse(data)
