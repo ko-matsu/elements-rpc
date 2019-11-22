@@ -1,4 +1,0 @@
-[submodule "node-json-rpc2"]
-	path = node-json-rpc2
-	url = https://github.com/ko-matsu/node-json-rpc2.git
-	branch = async_minimum
