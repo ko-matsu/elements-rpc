@@ -9,11 +9,13 @@
   "author": "",
   "license": "MIT",
   "dependencies": {
+    "big-integer": "^1.6.45",
+    "cfd-js": "git+https://github.com/ko-matsu/cfd-js#develop",
     "ini": "*",
+    "node-json-rpc2": "git+https://github.com/ko-matsu/node-json-rpc2#async_minimum",
     "readline-sync": "*",
     "request": "*",
-    "zlib": "*",
-    "node-json-rpc2": "git+https://github.com/ko-matsu/node-json-rpc2#async_minimum"
+    "zlib": "*"
   },
   "devDependencies": {
     "npm-run-all": "^4.1.5",

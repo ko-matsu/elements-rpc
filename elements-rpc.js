@@ -260,9 +260,10 @@ const checkString = function(arg, matchText, alias = undefined){
 
 // -----------------------------------------------------------------------------
 
-const main = async () =>{
+const elementsRpcFunction = async (dumpConsole = true) =>{
   try {
     if (process.argv.length <= 2) {
+      if (!dumpConsole) return -1;
       for (var i = 0;i < process.argv.length; i++) {
         console.log("argv[" + i + "] = " + process.argv[i]);
       }
@@ -1127,6 +1128,7 @@ const main = async () =>{
     }
     */
     else {
+      if (!dumpConsole) return -1;
       for(var i = 0;i < process.argv.length; i++){
         console.log("argv[" + i + "] = " + process.argv[i]);
       }
@@ -1135,10 +1137,14 @@ const main = async () =>{
   } catch (error) {
     console.log(error);
   }
-  return 0
+  return 0;
 }
-main()
 
+if ((process.argv.length >= 2) && (process.argv[1].lastIndexOf('elements-rpc.js') >= 0)) {
+  elementsRpcFunction();
+}
+
+module.exports = { help, elementsRpcFunction };
 
 // fundrawtransaction "hexstring" ( options iswitness )
 // - txin補填
