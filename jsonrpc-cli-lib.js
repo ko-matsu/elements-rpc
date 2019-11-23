@@ -1,6 +1,6 @@
 'use strict';
 // https://www.npmjs.com/package/node-json-rpc2
-const RpcClient = require('./node-json-rpc2/lib/client');
+const RpcClient = require('node-json-rpc2/lib/client');
 
 const ExecuteRpc = async function (client, method, params) {
   const promise = client.callPromise(method, params, 1.0)
