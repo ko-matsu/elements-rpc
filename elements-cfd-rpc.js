@@ -324,12 +324,12 @@ const main = async () =>{
         'version': 2,
         'locktime': 0,
         'txins': [{
-          'txid': send2.txid,
-          'vout': send2.vout,
-          'sequence': 4294967295,
-        },{
           'txid': txid,
           'vout': 0,
+          'sequence': 4294967295,
+        },{
+          'txid': send2.txid,
+          'vout': send2.vout,
           'sequence': 4294967295,
         },{
           'txid': txid,
@@ -353,7 +353,7 @@ const main = async () =>{
       console.log('testTx = ', testTx.hex);
 
       const emptyGen = '000000000000000000000000000000000000000000000000000000000000000000';
-      let assetgenlist = [emptyGen, generator1, generator2];
+      let assetgenlist = [generator1, emptyGen, generator2];
       const blindTx2 = await elementsCli.directExecute(
           'blindrawtransaction', [testTx.hex, true, assetgenlist]);
       console.log('blindTx2 = ', blindTx2);
