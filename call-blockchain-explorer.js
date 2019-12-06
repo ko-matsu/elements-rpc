@@ -524,7 +524,7 @@ const main = async () =>{
       }
       let prefix = getPrefix(process.argv[2], "tgetblocks", "lgetblocks")
       let url = `https://blockstream.info/${prefix}/blocks`
-      if ((index != '') && (index != ' ')) {
+      if ((height != '') && (height != ' ')) {
         const heightNum = Number(height)
         url = `https://blockstream.info/${prefix}/blocks/${heightNum}`
       }
