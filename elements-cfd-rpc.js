@@ -6,7 +6,6 @@ const readline = require('readline-sync');
 const jsonrpcClientLib = require('./jsonrpc-cli-lib')
 const cfdjs = require('cfd-js')
 const erpc = require('./elements-rpc.js')
-const wally = require('cfd-js/wrap_js/wally.js')
 // const bigInt = require('big-integer');
 // process.on('unhandledRejection', console.dir);
 
