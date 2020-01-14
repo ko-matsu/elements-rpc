@@ -176,6 +176,49 @@ const main = async () =>{
       const result = GenerateKeyPair(network, wif, isCompressed);
       console.log(result);
     }
+    else if (checkString(process.argv[2], "cfdBtcGetNewAddress", "cbnewaddr")) {
+      // bitcoin:'mainnet, testnet, regtest'. elements:'liquidv1, regtest'
+      let network = 'regtest';
+      // p2wpkh, p2wsh, p2pkh, p2sh, p2sh-p2wpkh, p2sh-p2wsh
+      let address_type = 'p2wpkh';
+      let script = false;
+      const hexData = process.argv[3];
+      if (process.argv.length > 4) network = process.argv[4];
+      if (process.argv.length > 5) address_type = process.argv[5];
+      if (process.argv.length > 6) script = strToBool(process.argv[6]);
+      const keyType = (script) ? 'redeem_script' : 'pubkey';
+      const result = cfdjs.CreateAddress({
+        keyData: {
+          hex: hexData,
+          type: keyType,
+        },
+        network: network,
+        hashType: address_type,
+      });
+      console.log(result);
+    }
+    else if (checkString(process.argv[2], "cfdElmGetNewAddress", "cenewaddr")) {
+      // bitcoin:'mainnet, testnet, regtest'. elements:'liquidv1, regtest'
+      let network = 'regtest';
+      // p2wpkh, p2wsh, p2pkh, p2sh, p2sh-p2wpkh, p2sh-p2wsh
+      let address_type = 'p2wpkh';
+      let script = false;
+      const hexData = process.argv[3];
+      if (process.argv.length > 4) network = process.argv[4];
+      if (process.argv.length > 5) address_type = process.argv[5];
+      if (process.argv.length > 6) script = strToBool(process.argv[6]);
+      const keyType = (script) ? 'redeem_script' : 'pubkey';
+      const result = cfdjs.CreateKeyPair({
+        isElements: true,
+        keyData: {
+          hex: hexData,
+          type: keyType,
+        },
+        network: network,
+        hashType: address_type,
+      });
+      console.log(result);
+    }
     else if (checkString(process.argv[2], "blindtest_783")) {
       const assetlabels = await elementsCli.directExecute('dumpassetlabels', [])
       const lbtcAsset = assetlabels.bitcoin;

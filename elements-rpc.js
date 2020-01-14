@@ -356,6 +356,51 @@ const elementsRpcFunction = async (dumpConsole = true) =>{
       const blockNum = (process.argv.length >= 6) ? process.argv[5] : 105
       await sendtoaddress_function(elementsCli, address, amount, blockNum)
     }
+    else if (checkString(process.argv[2], "btc_searchblock", "bsblock")) {
+      if (process.argv.length < 5) {
+        console.log("format: btc_searchblock <blockHash> <lockingScript>")
+        return 0
+      }
+      const blockHash = process.argv[3];
+      const lockingScript = process.argv[4];
+      const result = await btcCli.directExecute('getblock', [blockHash]);
+      for(var i = 0;i < result.tx.length; i++){
+        const txid = result.tx[i];
+        const txData = await btcCli.directExecute('getrawtransaction', [txid, true, blockHash]);
+        for(var j = 0; j < txData.vout.length; j++){
+          if (txData.vout[j].scriptPubKey.hex === lockingScript) {
+            const amount = txData.vout[j].value;
+            console.log(`  utxo[${txid},${j}] amount= ${amount}`)
+          }
+        }
+      }
+    }
+    else if (checkString(process.argv[2], "btc_generatetoaddress", "bgenaddr")) {
+      if (process.argv.length < 5) {
+        console.log("format: btc_generatetoaddress <genNum> <address> <lockingScript>")
+        return 0
+      }
+      const genNum = parseInt(process.argv[3]);
+      const address = process.argv[4];
+      const lockingScript = process.argv[5];
+      const result = await btcCli.directExecute('generatetoaddress', [genNum, address, 1000000]);
+      console.log(`  generatetoaddress = ${result}`)
+      for(var k = 0; k < result.length; k++){
+        const blockHash = result[k];
+        const block = await btcCli.directExecute('getblock', [blockHash]);
+        for(var i = 0;i < block.tx.length; i++){
+          const txid = block.tx[i];
+          const txData = await btcCli.directExecute('getrawtransaction', [txid, true, blockHash]);
+          for(var j = 0; j < txData.vout.length; j++){
+            if (txData.vout[j].scriptPubKey.hex === lockingScript) {
+              const amount = txData.vout[j].value;
+              console.log(`  utxo[${txid},${j}] amount = ${amount}`)
+              console.log("  tx = ", txData.vout[j])
+            }
+          }
+        }
+      }
+    }
     else if (checkString(process.argv[2], "pegin_generate", "peg2snd")) {
       if (process.argv.length < 6) {
         console.log("format: pegin_generate  <elem_address> <amount> <btc_address> (<nBlock>)")
