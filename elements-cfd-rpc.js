@@ -182,11 +182,17 @@ const main = async () =>{
       // p2wpkh, p2wsh, p2pkh, p2sh, p2sh-p2wpkh, p2sh-p2wsh
       let address_type = 'p2wpkh';
       let script = false;
-      const hexData = process.argv[3];
+      let hexData = '';
+      if (process.argv.length > 3) hexData = process.argv[3];
       if (process.argv.length > 4) network = process.argv[4];
       if (process.argv.length > 5) address_type = process.argv[5];
       if (process.argv.length > 6) script = strToBool(process.argv[6]);
       const keyType = (script) ? 'redeem_script' : 'pubkey';
+      if (hexData === '' && script === false) {
+        const keyData = GenerateKeyPair(network, true, true);
+        console.log(keyData);
+        hexData = keyData.pubkey;
+      }
       const result = cfdjs.CreateAddress({
         keyData: {
           hex: hexData,
@@ -219,6 +225,75 @@ const main = async () =>{
       });
       console.log(result);
     }
+// generatefunds
+    else if (checkString(process.argv[2], "cfdBtcGenerateFunds", "cbgenfund")) {
+      // 
+      if (process.argv.length < 5) {
+        console.log("format: cfdBtcGenerateFunds <requireAmount> <address>")
+        return 0
+      }
+      // bitcoin:'mainnet, testnet, regtest'. elements:'liquidv1, regtest'
+      let network = 'regtest';
+      const amount = parseInt(process.argv[3]);
+      const address = process.argv[4];
+      let sync = false;
+      if (process.argv.length > 5) sync = strToBool(process.argv[5]);
+      let totalAmount = 0;
+      while(totalAmount < amount){
+        const result = await btcCli.directExecute('generatetoaddress', [1, address, 1000000]);
+        // console.log(`  generatetoaddress = ${result}`)
+        for(var k = 0; k < result.length; k++){
+          const blockHash = result[k];
+          const block = await btcCli.directExecute('getblock', [blockHash]);
+          for(var i = 0;i < block.tx.length; i++){
+            const txid = block.tx[i];
+            const txData = await btcCli.directExecute('getrawtransaction', [txid, false, blockHash]);
+            // decode tx
+            const decTx = cfdjs.DecodeRawTransaction({
+              hex: txData, network: network,
+            });
+            for(var j = 0; j < decTx.vout.length; j++){
+              // console.log("  tx = ", decTx.vout[j])
+              if (decTx.vout[j].scriptPubKey.addresses) {
+                if (decTx.vout[j].scriptPubKey.addresses.length === 0) {
+                  // do nothing
+                } else if (decTx.vout[j].scriptPubKey.addresses[0] === address) {
+                  const amount = decTx.vout[j].value;
+                  console.log(`  utxo[${txid},${j}] amount = ${amount}`)
+                  totalAmount = totalAmount + decTx.vout[j].value;
+                }
+              }
+            }
+          }
+        }
+      }
+      if (sync) {
+        await btcCli.directExecute('generatetoaddress', [100, address, 1000000]);
+      }
+      console.log(`  totalAmount = ${totalAmount}`)
+    }
+// sendtoaddress
+    else if (checkString(process.argv[2], "cfdBtcSendtoaddress", "cbsndaddr")) {
+      // 
+    }
+// wallet command is need internal impl.
+  // signrawtransactionwithwallet
+  // getnewaddress
+  // getaddressinfo
+  // addmultisigaddress
+  // dumpprivkey
+  // estimatesmartfee
+  // getbalance
+  // listunspent
+  // setpaytxfee
+  // setrelayfee
+  // validateaddress
+  // fundrawtransaction
+  // importaddress
+// decoderawtransaction
+// GenerateKey : done
+// createnewaddress : done
+
     else if (checkString(process.argv[2], "blindtest_783")) {
       const assetlabels = await elementsCli.directExecute('dumpassetlabels', [])
       const lbtcAsset = assetlabels.bitcoin;
