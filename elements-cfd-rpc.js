@@ -133,6 +133,11 @@ const commandData = {
     alias: 'cgenkey',
     parameter: '[<network> [<wif> [<isCompressed>]]]'
   },
+  decodeTx: {
+    name: 'decodeTx',
+    alias: 'dec',
+    parameter: '<tx> [<network>]'
+  },
   blindtest_783: {
     name: 'blindtest_783',
     alias: undefined,
@@ -175,6 +180,47 @@ const main = async () =>{
       if (process.argv.length > 5) isCompressed = strToBool(process.argv[5]);
       const result = GenerateKeyPair(network, wif, isCompressed);
       console.log(result);
+    }
+    else if (checkString(process.argv[2], "decodeTx", "dec")) {
+      let tx = ''
+      if (process.argv.length < 4) {
+        let workTx = readline.question('target tx > ');
+        tx += workTx.trim();
+        while (workTx.length > 1020) {
+          workTx = readline.question('tx input continue > ');
+          if (workTx.length > 2) {
+            tx += workTx.trim();
+          }
+        }
+      } else {
+        tx = process.argv[3]
+      }
+      let network = 'regtest';
+      if (process.argv.length < 5) {
+        network = readline.question('network > ');
+      } else {
+        network = process.argv[4];
+      }
+      let decTx = '';
+      try {
+        decTx = cfdjs.ElementsDecodeRawTransaction({
+          hex: tx,
+          mainchainNetwork: network,
+        });
+        console.log(JSON.stringify(decTx, null, 2));
+        return;
+      } catch (err) {
+      }
+      try {
+        decTx = cfdjs.DecodeRawTransaction({
+          hex: tx,
+          network: network,
+        });
+        console.log(JSON.stringify(decTx, null, 2));
+      } catch (err) {
+        console.log(err);
+        console.log(`tx = ${tx}`);
+      }
     }
     else if (checkString(process.argv[2], "cfdBtcGetNewAddress", "cbnewaddr")) {
       // bitcoin:'mainnet, testnet, regtest'. elements:'liquidv1, regtest'
