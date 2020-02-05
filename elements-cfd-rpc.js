@@ -46,6 +46,10 @@ let btcCli = new jsonrpcClientLib.BitcoinCli(btcConnInfo)
 
 const listunspentMax = 9999999
 
+const toSatoshiAmount = function(amount){
+  return Number(amount * 100000000);
+};
+
 // -----------------------------------------------------------------------------
 
 const SendToNewAddress = async function(amount, blind = true){
@@ -56,7 +60,7 @@ const SendToNewAddress = async function(amount, blind = true){
   }
   const txid = await elementsCli.directExecute('sendtoaddress', [address, amount]);
   await elementsCli.directExecute('generatetoaddress', [6, address]);
-  const satoshi = Math.ceil(amount * 100000000);
+  // const satoshi = Math.ceil(amount * 100000000);
   const gettransaction = await elementsCli.directExecute('gettransaction', [txid]);
   const tx = await elementsCli.directExecute('decoderawtransaction', [gettransaction.hex]);
   let vout = 0;
@@ -72,6 +76,58 @@ const SendToNewAddress = async function(amount, blind = true){
     console.log("decode fail. tx=", JSON.stringify(tx, null, 2));
   }
   return {txid:txid, vout:vout, address:address,};
+}
+
+const btcSendToAddress = async function(amount, btcAdrType){
+  let address = await btcCli.directExecute('getnewaddress', ['', btcAdrType]);
+  const txid = await btcCli.directExecute('sendtoaddress', [address, amount]);
+  await btcCli.directExecute('generatetoaddress', [6, address]);
+  const gettransaction = await btcCli.directExecute('gettransaction', [txid]);
+  const tx = cfdjs.DecodeRawTransaction({hex: gettransaction.hex, network: 'regtest'});
+  console.log('btcSendToAddress: ', JSON.stringify(tx, null, 2));
+  let vout = 0;
+  const satoshi = toSatoshiAmount(amount);
+  if (Number(tx.vout[0].value) === satoshi) {
+    vout = 0;
+  } else if ((tx.vout.length > 1) && Number(tx.vout[1].value) === satoshi) {
+    vout = 1;
+  } else if ((tx.vout.length > 2) && Number(tx.vout[2].value) === satoshi) {
+    vout = 2;
+  } else if ((tx.vout.length > 3) && Number(tx.vout[3].value) === satoshi) {
+    vout = 3;
+  } else {
+    console.log("decode fail. tx=", JSON.stringify(tx, null, 2));
+  }
+  return {txid:txid, vout:vout, address:address, amount: amount};
+}
+
+const btcCfdSendToAddress = async function(utxo, amount, address){
+  // createTx
+  let newAddress = await btcCli.directExecute('getnewaddress', ['', 'bech32']);
+  const txdata = cfdjs.CreateRawTransaction({
+    'version': 2,
+    'locktime': 0,
+    'txins': [{
+      'txid': utxo.txid,
+      'vout': utxo.vout,
+      'sequence': 4294967295,
+    }],
+    'txouts': [{
+      'address': address,
+      'amount': toSatoshiAmount(amount),
+    },{
+      'address': newAddress,
+      'amount': toSatoshiAmount(utxo.amount - amount - 0.00002000),
+    }],
+  });
+  // sign
+  const signTx = await btcCli.directExecute('signrawtransactionwithwallet', [txdata.hex]);
+  const txid = await btcCli.directExecute('sendrawtransaction', [signTx.hex]);
+  // await elementsCli.directExecute('generatetoaddress', [6, utxoAddr]);
+  console.log("txid = " + txid);
+  const decTx = cfdjs.DecodeRawTransaction({hex: signTx.hex, network: 'regtest'});
+  console.log('btcCfdSendToAddress: ', JSON.stringify(decTx, null, 2));
+  return {txid: txid, vout: 0};
 }
 
 const GenerateKeyPair = function(network = 'regtest', wif = true, isCompressed = true){
@@ -601,12 +657,15 @@ const main = async () =>{
       // await elementsCli.directExecute('generatetoaddress', [6, utxoAddr]);
       console.log("txid2 = " + txid2);
     }
-    else if (checkString(command, 'blindpegin')) {
+    else if (checkString(process.argv[2], "blindpegin")) {
       const amount = Number(process.argv[3]);
-      const isBlind = true;
+      let isBlind = true;
       let fee = 0.001;
       if (process.argv.length >= 5) {
         fee = Number(process.argv[4]);
+      }
+      if (process.argv.length >= 6) {
+        isBlind = (process.argv[5] === 'true');
       }
       if (!amount || !fee) {
         throw Error('Invalid parameter');
@@ -629,12 +688,14 @@ const main = async () =>{
       issuances.before = await elementsCli.listissuances();
       // console.log("=== issuances ===\n", issuances.before)
 
+      const adrType = 'bech32';
       const elemUtxoAddress = await elementsCli.directExecute(
-          'getnewaddress', ['', 'blech32']);
+          'getnewaddress', ['', adrType]);
       // console.log("elemUtxoAddress =>\n", elemUtxoAddress)
       const elemUtxoAddressinfo = await elementsCli.directExecute(
           'getaddressinfo', [elemUtxoAddress]);
       console.log('elemUtxoAddressinfo =>\n', elemUtxoAddressinfo);
+      const sendAmt = elmAmount * 2;
       const utxoTxid = await elementsCli.directExecute(
           'sendtoaddress', [elemUtxoAddress, elmAmount * 2]);
       console.log('utxoTxid =>\n', utxoTxid);
@@ -646,7 +707,7 @@ const main = async () =>{
       listunspentResult.sort((a, b) => (a.amount - b.amount));
       // pick btc utxo (If isBlinded is true, pick blinded utxo)
       utxos.btc = listunspentResult.find((unspent) => {
-        return (unspent.txid === utxoTxid);
+        return (unspent.txid === utxoTxid) && (Number(unspent.amount) === sendAmt);
       });
       if (!utxos.btc) {
         throw Error('listunspent fail. Maybe low fee.');
@@ -656,22 +717,26 @@ const main = async () =>{
       const sidechainInfo = await elementsCli.getsidechaininfo();
 
       const btcAddress = await btcCli.directExecute('getnewaddress', []);
-      const elemAddress = await elementsCli.directExecute(
-          'getnewaddress', ['', 'blech32']);
+      let elemAddress = await elementsCli.directExecute(
+          'getnewaddress', ['', adrType]);
       console.log('elements confidential address: ', elemAddress);
       const addressinfo = await elementsCli.directExecute(
           'getaddressinfo', [elemAddress]);
+      if (!isBlind && (addressinfo.unconfidential)) {
+        elemAddress = addressinfo.unconfidential;
+      }
       const pegPrivkey = await elementsCli.directExecute(
           'dumpprivkey', [elemAddress]);
-      // console.log("elemAddressinfo =>\n", addressinfo)
+      console.log("elemAddressinfo =>\n", addressinfo)
 
       const paramPeginAddrJson = {
         'fedpegscript': sidechainInfo.fedpegscript,
         'pubkey': addressinfo.pubkey,
         'network': 'regtest',
-        'hashType': 'p2sh-p2wsh',
+        'hashType': 'p2wsh',
       };
       const peginaddressInfo = cfdjs.CreatePegInAddress(paramPeginAddrJson);
+      const btcAdrType = 'bech32'; // 'bech32'; 'p2sh-segwit'
 
       // const peginaddress = await elementsCli.directExecute(
       //     'getpeginaddress', [])
@@ -681,8 +746,13 @@ const main = async () =>{
 
       // btc
       let sendTxidVout = 0;
-      const sendTxid = await btcCli.directExecute(
-          'sendtoaddress', [peginAddress, amount]);
+      // const sendTxid = await btcCli.directExecute(
+      //     'sendtoaddress', [peginAddress, amount]);
+      const btcSnd = await btcSendToAddress(amount * 2, btcAdrType);
+      console.log('btcSendToAddress: ', btcSnd);
+      const btcSnd2 = await btcCfdSendToAddress(btcSnd, amount, peginAddress);
+      console.log('btcSnd2 =>\n', btcSnd2);
+      const sendTxid = btcSnd2.txid;
       console.log('sendtoaddress =>\n', sendTxid);
       await btcCli.directExecute('generatetoaddress', [blockNum, btcAddress]);
       const txData = await btcCli.directExecute('gettransaction', [sendTxid]);
@@ -693,7 +763,7 @@ const main = async () =>{
 
       let utxoAddrinfo = await elementsCli.directExecute(
           'getaddressinfo', [utxos.btc.address]);
-      const utxoConfAddr = utxoAddrinfo.confidential;
+      const utxoConfAddr = (isBlind) ? utxoAddrinfo.confidential : utxos.btc.address;
       utxoAddrinfo = await elementsCli.directExecute(
           'getaddressinfo', [utxoConfAddr]);
       // console.log("utxoAddrinfo =>\n", utxoAddrinfo)
@@ -705,12 +775,6 @@ const main = async () =>{
       console.log("peginBtcTxObj =>\n",
           JSON.stringify(peginBtcTxObj, null, 2));
       const sendAmount = Number(peginBtcTxObj.vout[0].value);
-      console.log("sendAmount =>\n", sendAmount);
-      if (sendAmount === amount) {
-        sendTxidVout = 0;
-      } else {
-        sendTxidVout = 1;
-      }
 
       // Pegin ---------------------------------------------------------------
       const paramPeginJson = {
@@ -969,6 +1033,7 @@ const main = async () =>{
       });
       console.log('\n\n\n=== pegout tx decoded data === \n',
           JSON.stringify(decodePegoutTx, null, 2));
+    }
     else if (erpc.elementsRpcFunction(false) == 0) {
       // execute elements-rpc.js
     }
