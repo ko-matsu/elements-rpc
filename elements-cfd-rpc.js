@@ -601,6 +601,374 @@ const main = async () =>{
       // await elementsCli.directExecute('generatetoaddress', [6, utxoAddr]);
       console.log("txid2 = " + txid2);
     }
+    else if (checkString(command, 'blindpegin')) {
+      const amount = Number(process.argv[3]);
+      const isBlind = true;
+      let fee = 0.001;
+      if (process.argv.length >= 5) {
+        fee = Number(process.argv[4]);
+      }
+      if (!amount || !fee) {
+        throw Error('Invalid parameter');
+      }
+      const elmAmount = 0.00100000;
+      const blockNum = 105;
+
+      const befGetbalance = await elementsCli.directExecute('getbalance', []);
+      console.log(`  before bitcoin amount = ${befGetbalance.bitcoin}`);
+
+      // === pre process ===
+      // get assetlabels
+      const assetlabels = await elementsCli.dumpassetlabels();
+      if (!assetlabels.bitcoin) {
+        throw Error('bitcoin label not found.');
+      }
+      // console.log(`bitcoin asset id = ${assetlabels.bitcoin}`)
+      // pick token info
+      const issuances = {};
+      issuances.before = await elementsCli.listissuances();
+      // console.log("=== issuances ===\n", issuances.before)
+
+      const elemUtxoAddress = await elementsCli.directExecute(
+          'getnewaddress', ['', 'blech32']);
+      // console.log("elemUtxoAddress =>\n", elemUtxoAddress)
+      const elemUtxoAddressinfo = await elementsCli.directExecute(
+          'getaddressinfo', [elemUtxoAddress]);
+      console.log('elemUtxoAddressinfo =>\n', elemUtxoAddressinfo);
+      const utxoTxid = await elementsCli.directExecute(
+          'sendtoaddress', [elemUtxoAddress, elmAmount * 2]);
+      console.log('utxoTxid =>\n', utxoTxid);
+
+      // === pick input utxo ===
+      const utxos = {};
+      const listunspentResult = await elementsCli.listunspent(
+          0, listunspentMax);
+      listunspentResult.sort((a, b) => (a.amount - b.amount));
+      // pick btc utxo (If isBlinded is true, pick blinded utxo)
+      utxos.btc = listunspentResult.find((unspent) => {
+        return (unspent.txid === utxoTxid);
+      });
+      if (!utxos.btc) {
+        throw Error('listunspent fail. Maybe low fee.');
+      }
+      console.log('unspents >>\n', JSON.stringify(utxos, null, 2));
+
+      const sidechainInfo = await elementsCli.getsidechaininfo();
+
+      const btcAddress = await btcCli.directExecute('getnewaddress', []);
+      const elemAddress = await elementsCli.directExecute(
+          'getnewaddress', ['', 'blech32']);
+      console.log('elements confidential address: ', elemAddress);
+      const addressinfo = await elementsCli.directExecute(
+          'getaddressinfo', [elemAddress]);
+      const pegPrivkey = await elementsCli.directExecute(
+          'dumpprivkey', [elemAddress]);
+      // console.log("elemAddressinfo =>\n", addressinfo)
+
+      const paramPeginAddrJson = {
+        'fedpegscript': sidechainInfo.fedpegscript,
+        'pubkey': addressinfo.pubkey,
+        'network': 'regtest',
+        'hashType': 'p2sh-p2wsh',
+      };
+      const peginaddressInfo = cfdjs.CreatePegInAddress(paramPeginAddrJson);
+
+      // const peginaddress = await elementsCli.directExecute(
+      //     'getpeginaddress', [])
+      console.log('getpeginaddress =>\n', peginaddressInfo);
+      const peginAddress = peginaddressInfo.mainchainAddress;
+      const claimScript = peginaddressInfo.claimScript;
+
+      // btc
+      let sendTxidVout = 0;
+      const sendTxid = await btcCli.directExecute(
+          'sendtoaddress', [peginAddress, amount]);
+      console.log('sendtoaddress =>\n', sendTxid);
+      await btcCli.directExecute('generatetoaddress', [blockNum, btcAddress]);
+      const txData = await btcCli.directExecute('gettransaction', [sendTxid]);
+      // console.log("gettransaction =>\n", txData)
+      const txoutproof = await btcCli.directExecute(
+          'gettxoutproof', [[sendTxid]]);
+      // console.log("gettxoutproof =>\n", txoutproof)
+
+      let utxoAddrinfo = await elementsCli.directExecute(
+          'getaddressinfo', [utxos.btc.address]);
+      const utxoConfAddr = utxoAddrinfo.confidential;
+      utxoAddrinfo = await elementsCli.directExecute(
+          'getaddressinfo', [utxoConfAddr]);
+      // console.log("utxoAddrinfo =>\n", utxoAddrinfo)
+
+      const peginBtcTxObj = cfdjs.DecodeRawTransaction({
+        'hex': txData.hex,
+        'network': 'regtest',
+      });
+      console.log("peginBtcTxObj =>\n",
+          JSON.stringify(peginBtcTxObj, null, 2));
+      const sendAmount = Number(peginBtcTxObj.vout[0].value);
+      console.log("sendAmount =>\n", sendAmount);
+      if (sendAmount === amount) {
+        sendTxidVout = 0;
+      } else {
+        sendTxidVout = 1;
+      }
+
+      // Pegin ---------------------------------------------------------------
+      const paramPeginJson = {
+        'version': 2,
+        'locktime': 0,
+        'txins': [{
+          'isPegin': true,
+          'txid': sendTxid,
+          'vout': sendTxidVout,
+          'sequence': 4294967295,
+          'peginwitness': {
+            'amount': toSatoshiAmount(amount),
+            'asset': assetlabels.bitcoin,
+            'mainchainGenesisBlockHash': sidechainInfo.parent_blockhash,
+            'claimScript': claimScript,
+            'mainchainRawTransaction': txData.hex,
+            'mainchainTxoutproof': txoutproof,
+          },
+          'isRemoveMainchainTxWitness': true,
+        }, {
+          'isPegin': false,
+          'txid': utxos.btc.txid,
+          'vout': utxos.btc.vout,
+          'sequence': 4294967295,
+        }],
+        'txouts': [{
+          'address': elemAddress,
+          'amount': toSatoshiAmount(amount),
+          'asset': assetlabels.bitcoin,
+        }, {
+          'address': utxoConfAddr,
+          'amount': toSatoshiAmount(utxos.btc.amount - fee),
+          'asset': assetlabels.bitcoin,
+        }],
+        'fee': {
+          'amount': toSatoshiAmount(fee),
+          'asset': assetlabels.bitcoin,
+        },
+      };
+      // console.log("paramPeginJson =>\n",
+      //     JSON.stringify(paramPeginJson, null, 2))
+      const peginTx = cfdjs.CreateRawPegin(paramPeginJson);
+      // const pegin_tx = await elementsCli.directExecute(
+      //     'createrawpegin', [txData.hex, txoutproof, claimScript])
+      // console.log("createrawpegin =>\n", pegin_tx)
+
+      const peginTxObj = cfdjs.ElementsDecodeRawTransaction({
+        'hex': peginTx.hex,
+        'network': 'regtest',
+      });
+      console.log("peginTxObj =>\n", JSON.stringify(peginTxObj, null, 2))
+
+      // === blind transaction ===
+      let blindTx = peginTx;
+      if (isBlind) {
+        blindTx = cfdjs.BlindRawTransaction({
+          'tx': peginTx.hex,
+          'txins': [
+            {
+              'txid': sendTxid,
+              'vout': sendTxidVout,
+              'asset': assetlabels.bitcoin,
+              'amount': toSatoshiAmount(amount),
+              'blindFactor': '0000000000000000000000000000000000000000000000000000000000000000', // eslint-disable-line max-len
+              'assetBlindFactor': '0000000000000000000000000000000000000000000000000000000000000000', // eslint-disable-line max-len
+            },
+            {
+              'txid': utxos.btc.txid,
+              'vout': utxos.btc.vout,
+              'asset': utxos.btc.asset,
+              'blindFactor': utxos.btc.amountblinder,
+              'assetBlindFactor': utxos.btc.assetblinder,
+              'amount': toSatoshiAmount(utxos.btc.amount),
+            },
+          ],
+          'txouts': [
+            {
+              'index': 0,
+              'blindPubkey': addressinfo.confidential_key,
+            },
+            {
+              'index': 1,
+              'blindPubkey': utxoAddrinfo.confidential_key,
+            },
+          ],
+        });
+      }
+      // console.log("blindTx = ", blindTx)
+
+      // === sign transaction ===
+      const inputAddrInfo = {};
+      let signedTx = blindTx;
+      // calc signature hash
+      inputAddrInfo.btc = await elementsCli.getaddressinfo(utxoConfAddr);
+      const sighashParamJson = {
+        'tx': signedTx.hex,
+        'txin': {
+          'txid': utxos.btc.txid,
+          'vout': utxos.btc.vout,
+          'keyData': {
+            'hex': utxoAddrinfo.pubkey,
+            'type': 'pubkey',
+          },
+          'confidentialValueCommitment': utxos.btc.amountcommitment,
+          'hashType': 'p2wpkh', // このスクリプト内では、p2wpkhしかサポートしていない
+        },
+      };
+      if (!isBlind) {
+        delete sighashParamJson.confidentialValueCommitment;
+        Object.assign(sighashParamJson,
+            {'amount': toSatoshiAmount(utxos.btc.amount)});
+      }
+      const sighash = cfdjs.CreateElementsSignatureHash(sighashParamJson);
+      console.log('sighash = ', sighash);
+
+      // calc signature
+      const privkey = await elementsCli.dumpprivkey(utxoConfAddr);
+      // let signature = cfdtest.CalculateEcSignature(
+      //     sighash.sighash, privkey, "regtest")
+      let signature = cfdjs.CalculateEcSignature({
+        'sighash': sighash.sighash,
+        'privkeyData': {
+          'privkey': privkey,
+          'network': 'regtest',
+        },
+      }).signature;
+      // set sign to wit
+      signedTx = cfdjs.AddSign({
+        'tx': signedTx.hex,
+        'isElements': true,
+        'txin': {
+          'txid': utxos.btc.txid,
+          'vout': utxos.btc.vout,
+          'isWitness': true,
+          'signParam': [
+            {
+              'hex': signature,
+              'type': 'sign',
+              'derEncode': true,
+            },
+            {
+              'hex': utxoAddrinfo.pubkey,
+              'type': 'pubkey',
+            },
+          ],
+        },
+      });
+
+      if (utxoAddrinfo.isscript) {
+        let redeemScript = utxoAddrinfo.hex;
+        if (!redeemScript) {
+          redeemScript = utxoAddrinfo.scriptPubKey;
+        }
+        signedTx = cfdjs.AddSign({
+          'tx': signedTx.hex,
+          'isElements': true,
+          'txin': {
+            'txid': utxos.btc.txid,
+            'vout': utxos.btc.vout,
+            'isWitness': false,
+            'signParam': [
+              {
+                'hex': redeemScript,
+                'type': 'redeem_script',
+              },
+            ],
+          },
+        });
+        // console.log("redeem_script =>\n", inputAddrInfo.btc);
+      }
+      // console.log("signed pegout transaction =>\n", signedTx);
+
+      // pegin witness sign
+      const reqJson = {
+        'tx': signedTx.hex,
+        'isElements': true,
+        'txin': {
+          'txid': sendTxid,
+          'vout': sendTxidVout,
+          'keyData': {
+            'hex': addressinfo.pubkey,
+            'type': 'pubkey',
+          },
+          'amount': toSatoshiAmount(amount),
+          'hashType': 'p2wpkh',
+          'sighashType': 'all',
+          'sighashAnyoneCanPay': false,
+        },
+      };
+      const signatureHash = cfdjs.CreateElementsSignatureHash(reqJson);
+      // console.log("\n*** signature hash ***\n", signatureHash, "\n")
+
+      // calculate signature
+      signature = cfdjs.CalculateEcSignature({
+        'sighash': signatureHash.sighash,
+        'privkeyData': {
+          'privkey': pegPrivkey,
+          'network': 'regtest',
+        },
+      }).signature;
+
+
+      const reqSignJson = {
+        'tx': signedTx.hex,
+        'isElements': true,
+        'txin': {
+          'txid': sendTxid,
+          'vout': sendTxidVout,
+          'isWitness': true,
+          'signParam': [
+            {
+              'hex': signature,
+              'type': 'sign',
+              'derEncode': true,
+              'sighashType': 'all',
+              'sighashAnyoneCanPay': false,
+            },
+            {
+              'hex': addressinfo.pubkey,
+              'type': 'pubkey',
+              'derEncode': false,
+            },
+          ],
+        },
+      };
+      signedTx = cfdjs.AddSign(reqSignJson);
+
+      // === send transaction ===
+      let txid = '';
+      try {
+        txid = await elementsCli.sendrawtransaction(signedTx.hex);
+        console.log(`\n=== pegout txid === => ${txid}\n`);
+      } catch (sendErr) {
+        const failedTxHex = signedTx.hex;
+        const failedTx = cfdjs.ElementsDecodeRawTransaction({
+          'hex': failedTxHex,
+          'network': 'regtest',
+          'mainchainNetwork': 'regtest',
+        });
+        console.error('fail tx =>\n', JSON.stringify(failedTx, null, 2));
+        throw sendErr;
+      }
+
+      // === post process ===
+      const generateAddr = await elementsCli.getnewaddress();
+      await elementsCli.generatetoaddress(2, generateAddr);
+
+      const balance = await elementsCli.getbalance();
+      console.log(`  after bitcoin amount = ${balance.bitcoin}`);
+
+      const gettransaction = await elementsCli.gettransaction(txid);
+      const decodePegoutTx = cfdjs.ElementsDecodeRawTransaction({
+        'hex': gettransaction.hex,
+        'network': 'regtest',
+        'mainchainNetwork': 'regtest',
+      });
+      console.log('\n\n\n=== pegout tx decoded data === \n',
+          JSON.stringify(decodePegoutTx, null, 2));
     else if (erpc.elementsRpcFunction(false) == 0) {
       // execute elements-rpc.js
     }
