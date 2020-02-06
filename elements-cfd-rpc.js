@@ -663,6 +663,7 @@ const main = async () =>{
 
       const amount = Number(process.argv[3]);
       let isBlind = true;
+      let isScript = false;
       let fee = 0.001;
       if (process.argv.length >= 5) {
         fee = Number(process.argv[4]);
@@ -673,6 +674,9 @@ const main = async () =>{
       let targetType = 'bech32'; // 'bech32'; 'p2sh-segwit'
       if (process.argv.length >= 7) {
         targetType = process.argv[6];
+      }
+      if (process.argv.length >= 8) {
+        isScript = (process.argv[7] === 'true');
       }
       if (!amount || !fee) {
         throw Error('Invalid parameter');
@@ -703,6 +707,10 @@ const main = async () =>{
       } else if (adrType === 'p2sh-segwit') {
         adrHashType = 'p2sh-p2wpkh';
       }
+
+      // liquid and elements is constant. dynafed is native segwit.
+      let peginAddrType = 'p2sh-p2wsh';
+      let peginHashType = 'p2wpkh';
 
       let elemUtxoAddress = await elementsCli.directExecute(
           'getnewaddress', ['', adrType]);
@@ -768,12 +776,43 @@ const main = async () =>{
           'dumpprivkey', [elemAddress]);
       console.log("elemAddressinfo =>\n", addressinfo)
 
-      const paramPeginAddrJson = {
-        'fedpegscript': sidechainInfo.fedpegscript,
-        'pubkey': addressinfo.pubkey,
-        'network': mainchainNetwork,
-        'hashType': 'p2sh-p2wsh',  // if use dynafed, can use p2wsh.
-      };
+      let elemAddress2 = await elementsCli.directExecute(
+          'getnewaddress', ['', adrType]);
+      const addressinfo2 = await elementsCli.directExecute(
+          'getaddressinfo', [elemAddress2]);
+      const pegPrivkey2 = await elementsCli.directExecute(
+          'dumpprivkey', [elemAddress2]);
+
+      let paramPeginAddrJson;
+      let multisigScript = '';
+      if (isScript) {
+        const multisig = cfdjs.CreateMultisig({
+          'nrequired': 2,
+          'keys': [
+            addressinfo.pubkey,
+            addressinfo2.pubkey,
+          ],
+          'network': network,
+          'hashType': 'p2sh-p2wsh',
+          'isElements': true,
+        });
+        multisigScript = multisig.witnessScript;
+
+        paramPeginAddrJson = {
+          'fedpegscript': sidechainInfo.fedpegscript,
+          'redeemScript': multisigScript,
+          'network': mainchainNetwork,
+          'hashType': peginAddrType,  // if use dynafed, can use p2wsh.
+        };
+      } else {
+        paramPeginAddrJson = {
+          'fedpegscript': sidechainInfo.fedpegscript,
+          'pubkey': addressinfo.pubkey,
+          'network': mainchainNetwork,
+          'hashType': peginAddrType,  // if use dynafed, can use p2wsh.
+        };
+      }
+
       const peginaddressInfo = cfdjs.CreatePegInAddress(paramPeginAddrJson);
 
       // const peginaddress = await elementsCli.directExecute(
@@ -981,58 +1020,126 @@ const main = async () =>{
       // console.log("signed pegout transaction =>\n", signedTx);
 
       // pegin witness sign
-      const reqJson = {
-        'tx': signedTx.hex,
-        'isElements': true,
-        'txin': {
-          'txid': sendTxid,
-          'vout': sendTxidVout,
-          'keyData': {
-            'hex': addressinfo.pubkey,
-            'type': 'pubkey',
+      if (!isScript) {
+        const signatureHash = cfdjs.CreateElementsSignatureHash({
+          'tx': signedTx.hex,
+          'isElements': true,
+          'txin': {
+            'txid': sendTxid,
+            'vout': sendTxidVout,
+            'keyData': {
+              'hex': addressinfo.pubkey,
+              'type': 'pubkey',
+            },
+            'amount': toSatoshiAmount(amount),
+            'hashType': (peginHashType === 'p2sh-p2wpkh') ? 'p2wpkh' : peginHashType,
+            'sighashType': 'all',
+            'sighashAnyoneCanPay': false,
           },
-          'amount': toSatoshiAmount(amount),
-          'hashType': (adrHashType === 'p2sh-p2wpkh') ? 'p2wpkh' : adrHashType,
-          'sighashType': 'all',
-          'sighashAnyoneCanPay': false,
-        },
-      };
-      const signatureHash = cfdjs.CreateElementsSignatureHash(reqJson);
-      // console.log("\n*** signature hash ***\n", signatureHash, "\n")
+        });
+        // console.log("\n*** signature hash ***\n", signatureHash, "\n")
 
-      // calculate signature
-      signature = cfdjs.CalculateEcSignature({
-        'sighash': signatureHash.sighash,
-        'privkeyData': {
-          'privkey': pegPrivkey,
-          'network': mainchainNetwork,
-        },
-      }).signature;
+        // calculate signature
+        signature = cfdjs.CalculateEcSignature({
+          'sighash': signatureHash.sighash,
+          'privkeyData': {
+            'privkey': pegPrivkey,
+            'network': mainchainNetwork,
+          },
+        }).signature;
 
-      const reqSignJson = {
-        'tx': signedTx.hex,
-        'isElements': true,
-        'txin': {
-          'txid': sendTxid,
-          'vout': sendTxidVout,
-          'isWitness': (adrHashType === 'p2pkh') ? false : true,
-          'signParam': [
-            {
-              'hex': signature,
-              'type': 'sign',
-              'derEncode': true,
+        signedTx = cfdjs.AddSign({
+          'tx': signedTx.hex,
+          'isElements': true,
+          'txin': {
+            'txid': sendTxid,
+            'vout': sendTxidVout,
+            'isWitness': (peginHashType === 'p2pkh') ? false : true,
+            'signParam': [{
+                'hex': signature,
+                'type': 'sign',
+                'derEncode': true,
+                'sighashType': 'all',
+                'sighashAnyoneCanPay': false,
+              },{
+                'hex': addressinfo.pubkey,
+                'type': 'pubkey',
+                'derEncode': false,
+              },
+            ],
+          },
+        });
+      } else {
+        const datas = [{
+            pubkey: addressinfo.pubkey,
+            privkey: pegPrivkey,
+          }, {
+            pubkey: addressinfo2.pubkey,
+            privkey: pegPrivkey2,
+          }
+        ];
+        let sigArr = [];
+        for (let i = 0; i < datas.length; ++i) {
+          const signatureHash = cfdjs.CreateElementsSignatureHash({
+            'tx': signedTx.hex,
+            'isElements': true,
+            'txin': {
+              'txid': sendTxid,
+              'vout': sendTxidVout,
+              'keyData': {
+                'hex': (isScript) ? multisigScript : datas[i].pubkey,
+                'type': (isScript) ? 'redeem_script' : 'pubkey',
+              },
+              'amount': toSatoshiAmount(amount),
+              'hashType': (peginHashType === 'p2pkh') ? 'p2sh' : 'p2wsh',
               'sighashType': 'all',
               'sighashAnyoneCanPay': false,
             },
-            {
-              'hex': addressinfo.pubkey,
-              'type': 'pubkey',
-              'derEncode': false,
+          });
+          // console.log("\n*** signature hash ***\n", signatureHash, "\n")
+
+          // calculate signature
+          const signature = cfdjs.CalculateEcSignature({
+            'sighash': signatureHash.sighash,
+            'privkeyData': {
+              'privkey': datas[i].privkey,
+              'network': mainchainNetwork,
             },
-          ],
-        },
-      };
-      signedTx = cfdjs.AddSign(reqSignJson);
+          }).signature;
+          sigArr.push(signature);
+        }
+
+        signedTx = cfdjs.AddMultisigSign({
+          tx: signedTx.hex,
+          isElements: true,
+          txin: {
+            'txid': sendTxid,
+            'vout': sendTxidVout,
+            'isWitness': (peginHashType === 'p2pkh') ? false : true,
+            signParams: [
+              {
+                hex: sigArr[0],
+                type: 'sign',
+                derEncode: true,
+                sighashType: 'all',
+                sighashAnyoneCanPay: false,
+                relatedPubkey: datas[0].pubkey,
+              },
+              {
+                hex: sigArr[1],
+                type: 'sign',
+                derEncode: true,
+                sighashType: 'all',
+                sighashAnyoneCanPay: false,
+                relatedPubkey: datas[1].pubkey,
+              },
+            ],
+            redeemScript: (peginHashType === 'p2pkh') ? multisigScript : '',
+            witnessScript: (peginHashType === 'p2pkh') ? '' : multisigScript,
+            hashType: (peginHashType === 'p2pkh') ? 'p2sh' : 'p2wsh',
+          },
+        });
+      }
       /*
       if (adrHashType === 'p2sh-p2wpkh') {
         signedTx = cfdjs.AddSign({
