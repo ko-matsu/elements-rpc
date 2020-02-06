@@ -295,7 +295,7 @@ const elementsRpcFunction = async (dumpConsole = true) =>{
         }
       }
     }
-    else if (process.argv[2] == "btc_listunspent") {
+    else if (checkString(process.argv[2], "btc_listunspent", "butxo")) {
       if (process.argv.length < 4) {
         const listunspent_result = await btcCli.directExecute('listunspent', [0, listunspentMax, []])
         console.log("listunspent =>\n", listunspent_result)
