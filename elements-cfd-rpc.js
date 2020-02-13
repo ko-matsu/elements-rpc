@@ -47,7 +47,7 @@ let btcCli = new jsonrpcClientLib.BitcoinCli(btcConnInfo)
 const listunspentMax = 9999999
 
 const toSatoshiAmount = function(amount){
-  return Number(amount * 100000000);
+  return Number(Math.floor(amount * 100000000));
 };
 
 // -----------------------------------------------------------------------------
@@ -1191,6 +1191,172 @@ const main = async () =>{
       });
       console.log('\n\n\n=== pegout tx decoded data === \n',
           JSON.stringify(decodePegoutTx, null, 2));
+    }
+    else if (checkString(process.argv[2], "blindtest")) {
+      let is_blind = true;
+      let sendAmt = 0.01;
+      let checkAmt = sendAmt * 2;
+      let fee = 0.0001;
+      const blockNum = 105;
+      const assetlabels = await elementsCli.directExecute('dumpassetlabels', []);
+      try {
+        console.log(`bitcoin asset id = ${assetlabels.bitcoin}`);
+      } catch (assetErr) {
+        console.log("bitcoin label not found.\n");
+      }
+
+      const listunspent_result = await elementsCli.directExecute('listunspent', [0, listunspentMax, []]);
+      let is_find = false;
+      let is_find2 = false;
+      let blindData = undefined;
+      let unblindData = undefined;
+      for (let idx=0; idx<listunspent_result.length; ++idx) {
+        if (listunspent_result[idx].asset === assetlabels.bitcoin) {
+          if (listunspent_result[idx].amount > checkAmt) {
+            if (listunspent_result[idx].amountblinder === '0000000000000000000000000000000000000000000000000000000000000000') {
+              if (!unblindData) {
+                unblindData = listunspent_result[idx];
+              }
+            } else {
+              if (!blindData) {
+                blindData = listunspent_result[idx];
+              }
+            }
+            if (blindData && unblindData) {
+              break;
+            }
+          }
+        }
+      }
+      if (!blindData || !unblindData) {
+        console.log("listunspent fail. low fee.");
+        return 0;
+      }
+      console.log("blindData >> ", blindData);
+      console.log("unblindData >> ", unblindData);
+      let amountList = {amount1: sendAmt, amount2: (blindData.amount - sendAmt),
+          amount3: sendAmt, amount4: (unblindData.amount - sendAmt - fee)};
+
+      const listlabels = await elementsCli.directExecute('listlabels', []);
+      let testaddrNames = ['testaddr1', 'testaddr2', 'testaddr3', 'testaddr4'];
+      let testaddrs = [undefined, undefined, undefined, undefined];
+      let testaddrInfos = [undefined, undefined, undefined, undefined];
+      // to unblind: 0, 1
+      // to blind: 2, 3
+      for (let key in listlabels) {
+        for (let idx in testaddrNames) {
+          if (!listlabels[key] || !testaddrNames[idx]) {
+            // do nothing
+          } else if (listlabels[key] === testaddrNames[idx]) {
+            const addrname = await elementsCli.directExecute('getaddressesbylabel', [testaddrNames[idx]]);
+            for (let key2 in addrname) {
+              if (key2) {
+                testaddrs[idx] = key2;
+                break;
+              }
+            }
+          }
+        }
+      }
+      for (let idx in testaddrNames) {
+        if (!testaddrs[idx]) {
+          testaddrs[idx] = await elementsCli.getnewaddress(testaddrNames[idx], 'bech32');
+        }
+        const addr = testaddrs[idx];
+        testaddrInfos[idx] = await elementsCli.directExecute('getaddressinfo', [addr])
+        if (idx < 2) {
+          // unblind
+          testaddrs[idx] = testaddrInfos[idx].unconfidential;
+        }
+      }
+
+      const testaddr1 = testaddrs[0];
+      const testaddr2 = testaddrs[1];
+      const testaddr3 = testaddrs[2];
+      const testaddr4 = testaddrs[3];
+      const createData = {
+        version: 2,
+        locktime: 0,
+        txins: [{
+          txid: blindData.txid,
+          vout: blindData.vout,
+          sequence: 4294967295,
+        }, {
+          txid: unblindData.txid,
+          vout: unblindData.vout,
+          sequence: 4294967295,
+        }],
+        txouts: [{
+          address: testaddr1,
+          amount: toSatoshiAmount(amountList.amount1),
+          asset: assetlabels.bitcoin,
+          isRemoveNonce: true,
+        },{
+          address: testaddr2,
+          amount: toSatoshiAmount(amountList.amount2),
+          asset: assetlabels.bitcoin,
+          isRemoveNonce: true,
+        },{
+          address: testaddr3,
+          amount: toSatoshiAmount(amountList.amount3),
+          asset: assetlabels.bitcoin,
+          isRemoveNonce: true,
+        },{
+          address: testaddr4,
+          amount: toSatoshiAmount(amountList.amount4),
+          asset: assetlabels.bitcoin,
+          isRemoveNonce: true,
+        }],
+        fee: {
+          amount: toSatoshiAmount(fee),
+          asset: assetlabels.bitcoin,
+        },
+      };
+      console.log('ElementsCreateRawTransaction req = ', createData);
+      const txdata = cfdjs.ElementsCreateRawTransaction(createData);
+
+      // === blind transaction ===
+      let blindTx = txdata;
+      blindTx = cfdjs.BlindRawTransaction({
+        tx: txdata.hex,
+        txins: [{
+            txid: blindData.txid,
+            vout: blindData.vout,
+            asset: assetlabels.bitcoin,
+            amount: toSatoshiAmount(blindData.amount),
+            blindFactor: blindData.amountblinder,
+            assetBlindFactor: blindData.assetblinder,
+          }, {
+            txid: unblindData.txid,
+            vout: unblindData.vout,
+            asset: assetlabels.bitcoin,
+            amount: toSatoshiAmount(unblindData.amount),
+            blindFactor: '0000000000000000000000000000000000000000000000000000000000000000', // eslint-disable-line max-len
+            assetBlindFactor: '0000000000000000000000000000000000000000000000000000000000000000', // eslint-disable-line max-len
+          },
+        ],
+        'txouts': [
+          {
+            'index': 2,
+            'blindPubkey': testaddrInfos[2].confidential_key,
+          }, {
+            'index': 3,
+            'blindPubkey': testaddrInfos[3].confidential_key,
+          },
+        ],
+      });
+      // console.log("blindTx = ", blindTx)
+
+      const signTx = await elementsCli.directExecute('signrawtransactionwithwallet', [blindTx.hex])
+      console.log("signTx =>\n", signTx)
+
+      const txid = await elementsCli.directExecute('sendrawtransaction', [signTx.hex])
+      console.log("txid =>\n", txid)
+
+      const gettransaction = await elementsCli.directExecute('gettransaction', [txid])
+      console.log("tx.amount =>\n", gettransaction.amount)
+      console.log("tx.details =>\n", gettransaction.details)
+
     }
     else if (erpc.elementsRpcFunction(false) == 0) {
       // execute elements-rpc.js

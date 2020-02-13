@@ -10,7 +10,7 @@
   "license": "MIT",
   "dependencies": {
     "big-integer": "^1.6.45",
-    "cfd-js": "git+https://github.com/cryptogarageinc/cfd-js#v0.0.10",
+    "cfd-js": "git+https://github.com/cryptogarageinc/cfd-js#v0.0.14",
     "ini": "*",
     "node-json-rpc2": "git+https://github.com/ko-matsu/node-json-rpc2#async_minimum",
     "readline-sync": "*",
