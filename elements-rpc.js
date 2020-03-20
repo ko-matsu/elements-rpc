@@ -1003,6 +1003,120 @@ const main = async () =>{
         console.log("dumpissuanceblindingkey ->", issue_key)
       }
     }
+    else if (checkString(process.argv[2], "splitutxo")) {
+      let is_unblind = false
+      if (process.argv.length >= 4) {
+        if ((process.argv[3] === true) || (process.argv[3] === 'true')) {
+          is_unblind = true
+        } else {
+          console.log("input = " + process.argv[3])
+        }
+      }
+      const listunspent_result = await elementsCli.directExecute('listunspent', [0, listunspentMax, []])
+      let totalAmount = 0;
+      let txinList = [];
+      let assetCommitmentList = [];
+      let isFind = false;
+      for (let idx=0; idx<listunspent_result.length; ++idx) {
+        if (listunspent_result[idx].amount < 1.0) {
+          continue;
+        }
+        if (is_unblind && listunspent_result[idx].amountblinder !== '0000000000000000000000000000000000000000000000000000000000000000') {
+          continue;
+        }
+        let map = {
+          txid: listunspent_result[idx].txid,
+          vout: listunspent_result[idx].vout,
+        };
+        txinList.push(map);
+        totalAmount += listunspent_result[idx].amount;
+        break;
+      }
+
+      const fee = 0.0003;
+      const loopLimit = totalAmount / 0.1;
+      let txoutList = [];
+      const amount = 0.1;
+      let usedTotal = 0;
+      let maxIdx = (loopLimit > 257) ? 257 : Math.floor(loopLimit);
+      for (let idx=0; idx<maxIdx-1; ++idx) {
+        const newAddr = await elementsCli.directExecute('getnewaddress', [])
+        let txout = {[newAddr]: amount.toFixed(8) };
+        usedTotal += amount;
+        txoutList.push(txout);
+        console.log(`generate addr[${idx}]: ${newAddr}`);
+      }
+      if (totalAmount - usedTotal > fee * 2) {
+        const newAddr = await elementsCli.directExecute('getnewaddress', [])
+        const newAmount = totalAmount - usedTotal - fee;
+        let txout = {[newAddr]: newAmount.toFixed(8) };
+        usedTotal += newAmount;
+        txoutList.push(txout);
+      }
+      let txoutFee = {fee: fee.toFixed(8) };
+      txoutList.push(txoutFee);
+
+      console.log("txinList =>\n", txinList)
+      console.log("txoutList =>\n", txoutList)
+      const createtx = await elementsCli.directExecute('createrawtransaction', [txinList, txoutList])
+      console.log("createtx =>\n", createtx)
+
+      const blind_tx = await elementsCli.directExecute('blindrawtransaction', [createtx, false, assetCommitmentList])
+      console.log("blind_tx =>\n", blind_tx);
+
+      const sign_tx = await elementsCli.directExecute('signrawtransactionwithwallet', [blind_tx])
+      console.log("sign_tx =>\n", sign_tx.hex);
+      
+      const txid = await elementsCli.directExecute('sendrawtransaction', [sign_tx.hex])
+      console.log("send tx =>", txid);
+    }
+    else if (checkString(process.argv[2], "blindlimittest")) {
+      let limit = 257;
+      if (process.argv.length >= 4) {
+        limit = process.argv[3];
+      }
+
+      const listunspent_result = await elementsCli.directExecute('listunspent', [0, listunspentMax, []])
+      if (listunspent_result.length < limit) {
+        console.log(`listunspent count is low limit. count=${listunspent_result.length}`);
+        return 0;
+      }
+
+      let totalAmount = 0;
+      let txinList = [];
+      let assetCommitmentList = [];
+      for (let idx=0; idx<limit; ++idx) {
+        let map = {
+          txid: listunspent_result[idx].txid,
+          vout: listunspent_result[idx].vout,
+        };
+        txinList.push(map);
+        totalAmount += listunspent_result[idx].amount;
+        if (listunspent_result[idx].amountblinder !== '0000000000000000000000000000000000000000000000000000000000000000') {
+          // assetCommitmentList.push(listunspent_result[idx].assetcommitment);
+        } else {
+          // assetCommitmentList.push('');
+        }
+      }
+
+      const fee = 0.0003;
+      const amount1 = totalAmount / 2;
+      const amount2 = totalAmount - amount1 - fee;
+      const newAddr = await elementsCli.directExecute('getnewaddress', [])
+      const newAddr2 = await elementsCli.directExecute('getnewaddress', [])
+      let txout1 = {[newAddr]: amount1.toFixed(8) };
+      let txout2 = {[newAddr2]: amount2.toFixed(8) };
+      let txoutFee = {fee: fee.toFixed(8) };
+      let txoutList = [txout1, txout2, txoutFee];
+      console.log("txinList =>\n", txinList)
+      console.log("txoutList =>\n", txoutList)
+      const createtx = await elementsCli.directExecute('createrawtransaction', [txinList, txoutList])
+      console.log("createtx =>\n", createtx)
+
+      // blindraw
+      const blind_tx = await elementsCli.directExecute('blindrawtransaction', [createtx, false, assetCommitmentList])
+      console.log("blind_tx =>\n", blind_tx);
+    }
     else if (checkString(process.argv[2], "pegout")) {
       if (process.argv.length < 5) {
         console.log("format: pegout <amount> <btc_address>")
@@ -1147,14 +1261,10 @@ main()
 
 
 // fundrawtransaction "hexstring" ( options iswitness )
-// - txin補填
 
 // combinerawtransaction ["hexstring",...]
-// - 複数の部分的に署名されたトランザクションを1つのトランザクションに結合します。
-//   結合されたトランザクションは、別の部分的に署名されたトランザクションまたは完全に署名されたトランザクション。
 
 // blindrawtransaction "hexstring" ( ignoreblindfail ["assetcommitment",...] blind_issuances "totalblinder" )
-//   - wallet利用
 // rawblindrawtransaction "hexstring" ["inputamountblinder",...] [inputamount,...] ["inputasset",...] ["inputassetblinder",...] ( "totalblinder" ignoreblindfail )
 // unblindrawtransaction "hex"
 
