@@ -260,9 +260,10 @@ const checkString = function(arg, matchText, alias = undefined){
 
 // -----------------------------------------------------------------------------
 
-const main = async () =>{
+const elementsRpcFunction = async (dumpConsole = true) =>{
   try {
     if (process.argv.length <= 2) {
+      if (!dumpConsole) return -1;
       for (var i = 0;i < process.argv.length; i++) {
         console.log("argv[" + i + "] = " + process.argv[i]);
       }
@@ -294,7 +295,7 @@ const main = async () =>{
         }
       }
     }
-    else if (process.argv[2] == "btc_listunspent") {
+    else if (checkString(process.argv[2], "btc_listunspent", "butxo")) {
       if (process.argv.length < 4) {
         const listunspent_result = await btcCli.directExecute('listunspent', [0, listunspentMax, []])
         console.log("listunspent =>\n", listunspent_result)
@@ -354,6 +355,51 @@ const main = async () =>{
       const amount = process.argv[4]
       const blockNum = (process.argv.length >= 6) ? process.argv[5] : 105
       await sendtoaddress_function(elementsCli, address, amount, blockNum)
+    }
+    else if (checkString(process.argv[2], "btc_searchblock", "bsblock")) {
+      if (process.argv.length < 5) {
+        console.log("format: btc_searchblock <blockHash> <lockingScript>")
+        return 0
+      }
+      const blockHash = process.argv[3];
+      const lockingScript = process.argv[4];
+      const result = await btcCli.directExecute('getblock', [blockHash]);
+      for(var i = 0;i < result.tx.length; i++){
+        const txid = result.tx[i];
+        const txData = await btcCli.directExecute('getrawtransaction', [txid, true, blockHash]);
+        for(var j = 0; j < txData.vout.length; j++){
+          if (txData.vout[j].scriptPubKey.hex === lockingScript) {
+            const amount = txData.vout[j].value;
+            console.log(`  utxo[${txid},${j}] amount= ${amount}`)
+          }
+        }
+      }
+    }
+    else if (checkString(process.argv[2], "btc_generatetoaddress", "bgenaddr")) {
+      if (process.argv.length < 5) {
+        console.log("format: btc_generatetoaddress <genNum> <address> <lockingScript>")
+        return 0
+      }
+      const genNum = parseInt(process.argv[3]);
+      const address = process.argv[4];
+      const lockingScript = process.argv[5];
+      const result = await btcCli.directExecute('generatetoaddress', [genNum, address, 1000000]);
+      console.log(`  generatetoaddress = ${result}`)
+      for(var k = 0; k < result.length; k++){
+        const blockHash = result[k];
+        const block = await btcCli.directExecute('getblock', [blockHash]);
+        for(var i = 0;i < block.tx.length; i++){
+          const txid = block.tx[i];
+          const txData = await btcCli.directExecute('getrawtransaction', [txid, true, blockHash]);
+          for(var j = 0; j < txData.vout.length; j++){
+            if (txData.vout[j].scriptPubKey.hex === lockingScript) {
+              const amount = txData.vout[j].value;
+              console.log(`  utxo[${txid},${j}] amount = ${amount}`)
+              console.log("  tx = ", txData.vout[j])
+            }
+          }
+        }
+      }
     }
     else if (checkString(process.argv[2], "pegin_generate", "peg2snd")) {
       if (process.argv.length < 6) {
@@ -1247,6 +1293,7 @@ const main = async () =>{
     }
     */
     else {
+      if (!dumpConsole) return -1;
       for(var i = 0;i < process.argv.length; i++){
         console.log("argv[" + i + "] = " + process.argv[i]);
       }
@@ -1255,10 +1302,14 @@ const main = async () =>{
   } catch (error) {
     console.log(error);
   }
-  return 0
+  return 0;
 }
-main()
 
+if ((process.argv.length >= 2) && (process.argv[1].lastIndexOf('elements-rpc.js') >= 0)) {
+  elementsRpcFunction();
+}
+
+module.exports = { help, elementsRpcFunction };
 
 // fundrawtransaction "hexstring" ( options iswitness )
 
