@@ -3,9 +3,8 @@
 const fs = require('fs')
 const ini = require('ini')
 const readline = require('readline-sync');
-// const { curly, Curl } = require('node-libcurl');    // https://www.npmjs.com/package/node-libcurl
 const zlib = require('zlib');
-const request = require('request');
+const needle = require('needle');
 
 // -----------------------------------------------------------------------------
 
@@ -67,17 +66,27 @@ const getPrefix = function(command, test_command, liquid_command) {
   return prefix
 }
 
-function doRequest(options) {
+function doRequest(options, postData = undefined) {
   return new Promise(function (resolve, reject) {
-    request(options, function (error, res, body) {
-      // console.log(res);
-      if (!error && res && res["statusCode"] && (res.statusCode === 200)) {
-        const statusCode = res.statusCode;
-        resolve({statusCode: statusCode, data: body, headers: res});
+    try {
+      const func = function (error, res, body) {
+        if (!error && res && res["statusCode"] && (res.statusCode === 200)) {
+          const statusCode = res.statusCode;
+          resolve({statusCode: statusCode, data: body, headers: res});
+        } else if (!error && res && body) {
+          resolve({statusCode: 299, data: body, headers: res});
+        } else {
+          reject(error);
+        }
+      };
+      if (!postData) {
+        needle.get(options.url, options, func);
       } else {
-        reject(error);
+        needle.post(options.url, postData, options, func);
       }
-    });
+    } catch (e) {
+      throw e;
+    }
   });
 }
 
@@ -90,13 +99,6 @@ const getRequest = async function(url) {
     headers: headers,
     gzip: true
   };
-  /*
-  const requestOptions = {
-    url: url,
-    method: "POST",
-    headers: headers,
-    json: payload
-  };*/
   const res = await doRequest(requestOptions);
   return res;
 }
@@ -125,6 +127,36 @@ const callGet = async function(url) {
   }
 }
 
+const callPost = async function(url, formData, contextType) {
+  console.log(`url = ${url}`)
+  const reqHeaders = {
+    'content-type': contextType,
+  };
+  const requestOptions = {
+    url: url,
+    method: 'POST',
+    form: formData,
+  };
+  // push tx
+  // pushtx$.map(rawtx     => ({ category: 'pushtx',     method: 'POST', path: `/tx`, send: rawtx, type: 'text/plain' }))
+  // const opt = { 'SSL_VERIFYPEER':false, 'ENCODING':'gzip' }
+  // const { statusCode, data, headers } = await curly.get(url, opt)
+  const resp = await doRequest(requestOptions, formData.tx);
+  try {
+    // console.log(`response:`, resp)
+    const { statusCode, data, headers } = resp;
+    console.log(`status = ${statusCode}`)
+    if ((statusCode >= 200) && (statusCode < 300)) {
+      // console.log(`headers = ${headers}`)
+      let result = data
+      console.log('data =', result)
+    }
+  } catch (e) {
+    console.log('post fail: ', e);
+    throw e;
+  }
+}
+
 // -----------------------------------------------------------------------------
 
 const main = async () =>{
@@ -135,6 +167,25 @@ const main = async () =>{
       }
       help()
     }
+    else if (checkString(process.argv[2], "sendtx", "tsendtx", "lsendtx")) {
+      let filePath = ''
+      if (process.argv.length < 4) {
+        filePath = readline.question('txFilePath > ');
+      } else {
+        filePath = process.argv[3]
+      }
+
+      const hex = fs.readFileSync(filePath, 'utf-8').toString().trim();
+      if (hex == '') {
+        console.log("fail tx hex.\n")
+        return
+      }
+      const formData = { tx: hex };
+      console.log('formData =', formData);
+      let prefix = getPrefix(process.argv[2], "tsendtx", "lsendtx");
+      const url = `https://blockstream.info/${prefix}/tx`;
+      await callPost(url, formData, 'text/plain');
+    }
     else if (checkString(process.argv[2], "gettx", "tgettx", "lgettx")) {
       let txid = ''
       if (process.argv.length < 4) {
@@ -142,9 +193,9 @@ const main = async () =>{
       } else {
         txid = process.argv[3]
       }
-      if (txid == '') {
+      if (txid == 'liquid/api') {
         console.log("fail txid.\n")
-        return
+        
       }
       let prefix = getPrefix(process.argv[2], "tgettx", "lgettx")
       const url = `https://blockstream.info/${prefix}/tx/${txid}`
@@ -641,7 +692,8 @@ const main = async () =>{
       help()
     }
   } catch (error) {
-    console.log(error);
+    console.log('cause exception:', error);
+    return 1;
   }
   return 0
 }
