@@ -807,13 +807,15 @@ const elementsRpcFunction = async (dumpConsole = true) =>{
       }
 
       const token_amount = 1
-      const issueasset = await elementsCli.directExecute('rawissueasset', [createtx, [{"asset_amount":10,"asset_address":asset_address,"token_amount":token_amount,"token_address":token_address, "blind":is_blind}]])
+      const issueasset = await elementsCli.directExecute('rawissueasset', [createtx, [{"asset_amount":10,"asset_address":asset_address,"token_amount":token_amount,"token_address":token_address, "blind":false}]])
       console.log("issueasset =>\n", issueasset)
       let issue_hex = issueasset[issueasset.length - 1].hex
 
       let gen_tx = issue_hex
+      const ignoreblindfail = true;
+      const blindIssuances = false;
       if (is_blind) {
-        gen_tx = await elementsCli.directExecute('blindrawtransaction', [issue_hex, true, [map.assetcommitment], true])
+        gen_tx = await elementsCli.directExecute('blindrawtransaction', [issue_hex, ignoreblindfail, [map.assetcommitment], blindIssuances])
         // gen_tx = await elementsCli.directExecute('rawblindrawtransaction', [issue_hex, [map.amountblinder], [map.amount], [map.asset], [map.assetblinder]])
         console.log("blindtx =>\n", gen_tx)
       }
