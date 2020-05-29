@@ -717,13 +717,12 @@ const elementsRpcFunction = async (dumpConsole = true) =>{
       console.log("decoderawtransaction =>\n", JSON.stringify(tx, null, 2))
     }
     else if (checkString(process.argv[2], "sendreissue")) {
-      let is_blind = true
+      const is_blind = true
+      let isBlindIssue = true
       let fee = 0.0001
       if (process.argv.length >= 4) {
         if ((process.argv[3] === false) || (process.argv[3] === 'false')) {
-          console.log("reissue command is blind only.")
-          return 0;
-        } else {
+          isBlindIssue = false;
           console.log("input = " + process.argv[3])
         }
       }
@@ -807,13 +806,13 @@ const elementsRpcFunction = async (dumpConsole = true) =>{
       }
 
       const token_amount = 1
-      const issueasset = await elementsCli.directExecute('rawissueasset', [createtx, [{"asset_amount":10,"asset_address":asset_address,"token_amount":token_amount,"token_address":token_address, "blind":false}]])
+      const issueasset = await elementsCli.directExecute('rawissueasset', [createtx, [{"asset_amount":10,"asset_address":asset_address,"token_amount":token_amount,"token_address":token_address, "blind":isBlindIssue}]])
       console.log("issueasset =>\n", issueasset)
       let issue_hex = issueasset[issueasset.length - 1].hex
 
       let gen_tx = issue_hex
       const ignoreblindfail = true;
-      const blindIssuances = false;
+      const blindIssuances = isBlindIssue;
       if (is_blind) {
         gen_tx = await elementsCli.directExecute('blindrawtransaction', [issue_hex, ignoreblindfail, [map.assetcommitment], blindIssuances])
         // gen_tx = await elementsCli.directExecute('rawblindrawtransaction', [issue_hex, [map.amountblinder], [map.amount], [map.asset], [map.assetblinder]])
@@ -890,7 +889,7 @@ const elementsRpcFunction = async (dumpConsole = true) =>{
       if (is_blind) {
         console.log("token_utxo =>\n", tokenCommitment)
         console.log("map2       =>\n", map2.assetcommitment)
-        gen_tx = await elementsCli.directExecute('blindrawtransaction', [gen_tx, true, [tokenCommitment, map2.assetcommitment], true])
+        gen_tx = await elementsCli.directExecute('blindrawtransaction', [gen_tx, ignoreblindfail, [tokenCommitment, map2.assetcommitment], blindIssuances])
         // gen_tx = await elementsCli.directExecute('rawblindrawtransaction', [reissue_hex, [map.amountblinder], [map.amount], [map.asset], [map.assetblinder]])
         console.log("blindtx =>\n", gen_tx)
       }
