@@ -493,6 +493,17 @@ const elementsRpcFunction = async (dumpConsole = true) =>{
         console.log("sendtoaddress =>\n", txid)
       }
     }
+    else if (checkString(process.argv[2], "genaddr")) {
+      let max = 1
+      if (process.argv.length >= 4) {
+        max = parseInt(process.argv[3])
+      }
+      console.log("address:");
+      for (let count = 0; count < max; ++count) {
+        const newAddress = await elementsCli.directExecute('getnewaddress', ['', 'bech32']);
+        console.log(newAddress);
+      }
+    }
     else if (checkString(process.argv[2], "btc_validaddress", "bvaddr")) {
       let address = ''
       if (process.argv.length < 4) {
