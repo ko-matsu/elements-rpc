@@ -159,6 +159,11 @@ const commandData = {
     alias: 'gen',
     parameter: undefined
   },
+  btc_generate_auto: {
+    name: 'btc_generate_auto',
+    alias: 'bgen',
+    parameter: undefined
+  },
   generate_confidential: {
     name: 'generate_confidential',
     alias: 'genct',
@@ -273,11 +278,13 @@ const elementsRpcFunction = async (dumpConsole = true) =>{
       if (process.argv.length < 4) {
         const listunspent_result = await elementsCli.directExecute('listunspent', [0, listunspentMax, []])
         console.log("listunspent =>\n", listunspent_result)
+        console.log("len:", listunspent_result.length)
       }
       else if (process.argv.length < 5) {
         const address = process.argv[3]
         const listunspent_result = await elementsCli.directExecute('listunspent', [0, listunspentMax, [address]])
         console.log("listunspent =>\n", listunspent_result)
+        console.log("len:", listunspent_result.length)
       }
       else {
         const address = process.argv[3]
@@ -289,9 +296,11 @@ const elementsRpcFunction = async (dumpConsole = true) =>{
         if (address === '') {
           const listunspent_result = await elementsCli.directExecute('listunspent', [0, listunspentMax, [], true, {"asset":asset}])
           console.log("listunspent =>\n", listunspent_result)
+          console.log("len:", listunspent_result.length)
         } else {
           const listunspent_result = await elementsCli.directExecute('listunspent', [0, listunspentMax, [address], true, {"asset":asset}])
           console.log("listunspent =>\n", listunspent_result)
+          console.log("len:", listunspent_result.length)
         }
       }
     }
@@ -313,6 +322,38 @@ const elementsRpcFunction = async (dumpConsole = true) =>{
         } else {
           const listunspent_result = await btcCli.directExecute('listunspent', [0, listunspentMax, [address]])
           console.log("listunspent =>\n", listunspent_result)
+        }
+      }
+    }
+    else if (checkString(process.argv[2], "listunspent_large", "utxol")) {
+      const minAmount = 1;
+      const option = {minimumAmount: minAmount};
+      if (process.argv.length < 4) {
+        const listunspent_result = await elementsCli.directExecute('listunspent', [0, listunspentMax, [], true, option])
+        console.log("listunspent =>\n", listunspent_result)
+        console.log("len:", listunspent_result.length)
+      }
+      else if (process.argv.length < 5) {
+        const address = process.argv[3]
+        const listunspent_result = await elementsCli.directExecute('listunspent', [0, listunspentMax, [address], true, option])
+        console.log("listunspent =>\n", listunspent_result)
+        console.log("len:", listunspent_result.length)
+      }
+      else {
+        const address = process.argv[3]
+        let asset = process.argv[4]
+        if (asset === 'bitcoin') {
+          const labels = await elementsCli.directExecute('dumpassetlabels', [])
+          asset = labels.bitcoin
+        }
+        if (address === '') {
+          const listunspent_result = await elementsCli.directExecute('listunspent', [0, listunspentMax, [], true, {"asset":asset, "minimumAmount": minAmount}])
+          console.log("listunspent =>\n", listunspent_result)
+          console.log("len:", listunspent_result.length)
+        } else {
+          const listunspent_result = await elementsCli.directExecute('listunspent', [0, listunspentMax, [address], true, {"asset":asset, "minimumAmount": minAmount}])
+          console.log("listunspent =>\n", listunspent_result)
+          console.log("len:", listunspent_result.length)
         }
       }
     }
@@ -480,8 +521,7 @@ const elementsRpcFunction = async (dumpConsole = true) =>{
       address = addressinfo.unconfidential
       console.log("elements address: ", address)
       for (let count = 0; count < 10; ++count) {
-        const txid = await elementsCli.directExecute('sendtoaddress', [address, amount])
-        console.log("sendtoaddress =>\n", txid)
+        await sendtoaddress_function(elementsCli, address, amount, 1)
       }
     }
     else if (checkString(process.argv[2], "generate_confidential", "genct")) {
@@ -489,9 +529,22 @@ const elementsRpcFunction = async (dumpConsole = true) =>{
       let address = await elementsCli.directExecute('getnewaddress', [])
       console.log("elements address: ", address)
       for (let count = 0; count < 10; ++count) {
-        const txid = await elementsCli.directExecute('sendtoaddress', [address, amount])
-        console.log("sendtoaddress =>\n", txid)
+        await sendtoaddress_function(elementsCli, address, amount, 1)
       }
+    }
+    else if (checkString(process.argv[2], "generate_auto_single", "gens")) {
+      const amount = 0.1
+      let address = await elementsCli.directExecute('getnewaddress', [])
+      const addressinfo = await elementsCli.directExecute('getaddressinfo', [address])
+      address = addressinfo.unconfidential
+      console.log("elements address: ", address)
+      await sendtoaddress_function(elementsCli, address, amount, 1)
+    }
+    else if (checkString(process.argv[2], "generate_confidential_single", "gencts")) {
+      const amount = 0.1
+      let address = await elementsCli.directExecute('getnewaddress', [])
+      console.log("elements address: ", address)
+      await sendtoaddress_function(elementsCli, address, amount, 1)
     }
     else if (checkString(process.argv[2], "genaddr")) {
       let max = 1
