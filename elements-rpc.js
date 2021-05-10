@@ -149,24 +149,39 @@ const commandData = {
     alias: 'apeg',
     parameter: undefined
   },
+  pegin_auto_confidential: {
+    name: 'pegin_auto_confidential',
+    alias: 'apegct',
+    parameter: undefined
+  },
   pegin_generate: {
     name: 'pegin_generate',
     alias: 'peg2snd',
     parameter: '<elem_address> <amount> <btc_address> (<nBlock>)'
-  },
-  generate: {
-    name: 'generate',
-    alias: 'gen',
-    parameter: undefined
   },
   btc_generate_auto: {
     name: 'btc_generate_auto',
     alias: 'bgen',
     parameter: undefined
   },
+  pegingenerate_auto: {
+    name: 'pegingenerate_auto',
+    alias: 'gen',
+    parameter: undefined
+  },
   generate_confidential: {
     name: 'generate_confidential',
     alias: 'genct',
+    parameter: undefined
+  },
+  generate_auto_single: {
+    name: 'generate_auto_single',
+    alias: 'gens',
+    parameter: undefined
+  },
+  generate_confidential_single: {
+    name: 'generate_confidential_single',
+    alias: 'gencts',
     parameter: undefined
   },
   pegout: {
