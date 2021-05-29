@@ -122,7 +122,11 @@ const callGet = async function(url) {
       let jsonData = JSON.parse(data)
       console.log('data =', JSON.stringify(jsonData, null, 2))
     } catch (error) {
-      console.log('data =', data)
+      if ('toString' in data) {
+        console.log('data =', data.toString('hex'))
+      } else {
+        console.log('data =', data)
+      }
     }
   }
 }
@@ -549,6 +553,21 @@ const main = async () =>{
       const indexNum = Number(index)
       let prefix = getPrefix(process.argv[2], "tgetblocktxid", "lgetblocktxid")
       let url = `https://blockstream.info/${prefix}/block/${blockhash}/txid/${indexNum}`
+      await callGet(url)
+    }
+    else if (checkString(process.argv[2], "getblockraw", "tgetblockraw", "lgetblockraw")) {
+      let blockhash = ''
+      if (process.argv.length < 4) {
+        blockhash = readline.question('blockhash > ');
+      } else {
+        blockhash = process.argv[3]
+      }
+      if (blockhash == '') {
+        console.log("fail blockhash.\n")
+        return
+      }
+      let prefix = getPrefix(process.argv[2], "tgetblockraw", "lgetblockraw")
+      let url = `https://blockstream.info/${prefix}/block/${blockhash}/raw`
       await callGet(url)
     }
     else if (checkString(process.argv[2], "getblockheight", "tgetblockheight", "lgetblockheight")) {
