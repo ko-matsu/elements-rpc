@@ -122,8 +122,16 @@ const callGet = async function(url) {
       let jsonData = JSON.parse(data)
       console.log('data =', JSON.stringify(jsonData, null, 2))
     } catch (error) {
-      if ('toString' in data) {
-        console.log('data =', data.toString('hex'))
+      if (data instanceof String) {
+        console.log('data =', data)
+      } else if (data instanceof Buffer) {
+        console.log('data(hex) =', data.toString('hex'))
+      } else if (data instanceof Object) {
+        if (!(data instanceof Array)) {
+          console.log('data =', data)
+        } else {
+          console.log('data(hex) =', data.toString('hex'))
+        }
       } else {
         console.log('data =', data)
       }
@@ -154,6 +162,7 @@ const callPost = async function(url, formData, contextType) {
       // console.log(`headers = ${headers}`)
       let result = data
       console.log('data =', result)
+      console.log('jsondata =', JSON.stringify(result))
     }
   } catch (e) {
     console.log('post fail: ', e);

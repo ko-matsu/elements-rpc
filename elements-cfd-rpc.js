@@ -1488,6 +1488,10 @@ const main = async () =>{
       console.log("tx.details =>\n", gettransaction.details)
 
     }
+    else if (checkString(process.argv[2], "negatepubkey")) {
+      const pubkey = process.argv[3];
+      console.log('negate pubkey =', cfdjs.NegatePubkey({pubkey}));
+    }
     else if (erpc.elementsRpcFunction(false) == 0) {
       // execute elements-rpc.js
     }
